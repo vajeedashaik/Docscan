@@ -1,12 +1,12 @@
 import React from 'react';
 import { Helmet } from 'react-helmet';
-import { SignIn } from '@clerk/clerk-react';
+import { SignUp } from '@clerk/clerk-react';
 
-const Auth: React.FC = () => {
+const Signup: React.FC = () => {
   return (
     <>
       <Helmet>
-        <title>Sign In | OCR Document Extractor</title>
+        <title>Sign Up | OCR Document Extractor</title>
       </Helmet>
 
       <div className="min-h-screen gradient-surface flex items-center justify-center p-4">
@@ -20,10 +20,10 @@ const Auth: React.FC = () => {
             />
           </div>
 
-          {/* Clerk SignIn Component */}
+          {/* Clerk SignUp Component */}
           <div className="flex justify-center">
-            <SignIn 
-              signUpUrl="/sign-up"
+            <SignUp 
+              signInUrl="/auth"
               redirectUrl="/"
               appearance={{
                 elements: {
@@ -39,4 +39,4 @@ const Auth: React.FC = () => {
   );
 };
 
-export default Auth;
+export default Signup;

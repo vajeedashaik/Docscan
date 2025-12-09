@@ -12,3 +12,4 @@ Allow: /
 
 User-agent: *
 Allow: /
+sar take rest sar, so much u worked today, i'll anyways leave to gym by 5

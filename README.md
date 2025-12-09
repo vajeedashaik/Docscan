@@ -1,26 +1,11 @@
 # Welcome to your Lovable project
 
 ## Project info
-ill fix this and try urs cuz wha if i wanna push diff codes ill fix rthis eror and ill push it into ur acc wait
-I'LL SEND CODES COPY PASTE IN TERMINAL OKIE
 
-**URL**: https://lovable.dev/projects/85a3937c-d0be-414b-b7c8-8c9544de4aa2
-## How can I edit this code?
-# IT MEANS THERE IS NTHG WRONG W UR GIT, VS CODE TERMINAL JZ NEEDS TO RESTART OR SMTHG TO SAVE THE CHANGES U MADE I
-now what
-
-N UR PATH OR SMTHG YESSAR
-1. git remote add origin https://github.com/AryanVihan/docscan-ai.git
-2. git init
-3. git add .
-4. git commit -m "ui changes made"
-5. git branch -M main
-6. git push -u origin main
-
-There are several ways of editing your application.
-
+**URL**: https://lovable.dev/projects/85a3937c-d0be-414b-b7c8-8c9
+i want u to atleast cm on meets and text like this 
 **Use Lovable**
-
+# 
 Simply visit the [Lovable Project](https://lovable.dev/projects/85a3937c-d0be-414b-b7c8-8c9544de4aa2) and start prompting.
 
 Changes made via Lovable will be committed automatically to this repo.
