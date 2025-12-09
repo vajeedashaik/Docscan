@@ -14,15 +14,15 @@ export const Header: React.FC = () => {
   }, [theme]);
 
   const logoSrc = theme === 'dark' 
-    ? '/renotify-logo-cyan.png'
-    : '/renotify-logo-navy.png';
+    ? '/dark_theme-removebg-preview.png'
+    : '/light_theme-removebg-preview.png';
 
   return (
     <header className="border-b border-border bg-card sticky top-0 z-50">
       <div className="px-4 py-3">
         <div className="flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
-            <img src={logoSrc} alt="Logo" className="h-12 w-auto" />
+            <img src={logoSrc} alt="Logo" className="h-16 w-auto" />
           </Link>
 
           <div className="flex items-center gap-3">

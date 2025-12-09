@@ -6,6 +6,18 @@ import { ClerkProvider } from "@clerk/clerk-react";
 
 // Suppress UNSAFE_componentWillMount warning from third-party libraries in development
 if (process.env.NODE_ENV === 'development') {
+  const originalWarn = console.warn;
+  console.warn = (...args: any[]) => {
+    // Suppress Clerk development keys warning in development mode
+    if (
+      typeof args[0] === 'string' &&
+      args[0].includes('Clerk: Clerk has been loaded with development keys')
+    ) {
+      return;
+    }
+    originalWarn.call(console, ...args);
+  };
+
   const originalError = console.error;
   console.error = (...args: any[]) => {
     if (

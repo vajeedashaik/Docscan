@@ -7,6 +7,9 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { Header } from "@/components/layout/Header";
 import Landing from "./pages/Landing";
 import Dashboard from "./pages/Dashboard";
+import DashboardPage from "./pages/DashboardPage";
+import OCRPage from "./pages/OCRPage";
+import PricingPage from "./pages/PricingPage";
 import Auth from "./pages/Auth";
 import Signup from "./pages/Signup";
 import Subscription from "./pages/Subscription";
@@ -20,12 +23,15 @@ const App = () => {
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter>
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <AuthProvider>
             <Routes>
               <Route path="/" element={<Landing />} />
+              <Route path="/ocr" element={<OCRPage />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/pricing" element={<PricingPage />} />
               <Route element={<><Header /></>}>
-                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/old-dashboard" element={<Dashboard />} />
                 <Route path="/subscription" element={<Subscription />} />
               </Route>
               <Route path="/auth" element={<Auth />} />
