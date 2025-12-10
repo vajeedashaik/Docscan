@@ -273,6 +273,9 @@ CREATE POLICY "Users can insert own document metadata" ON public.document_metada
 CREATE POLICY "Users can update own document metadata" ON public.document_metadata
   FOR UPDATE USING (auth.uid()::text = user_id);
 
+CREATE POLICY "Users can delete own document metadata" ON public.document_metadata
+  FOR DELETE USING (auth.uid()::text = user_id);
+
 -- Document Categories - Users can only access their own
 CREATE POLICY "Users can view own categories" ON public.document_categories
   FOR SELECT USING (auth.uid()::text = user_id);
@@ -317,6 +320,12 @@ CREATE POLICY "Users can update own preferences" ON public.notification_preferen
 -- User Statistics - Users can view own, system can update
 CREATE POLICY "Users can view own statistics" ON public.user_statistics
   FOR SELECT USING (auth.uid()::text = user_id);
+
+CREATE POLICY "Users can insert own statistics" ON public.user_statistics
+  FOR INSERT WITH CHECK (auth.uid()::text = user_id);
+
+CREATE POLICY "Users can update own statistics" ON public.user_statistics
+  FOR UPDATE USING (auth.uid()::text = user_id);
 
 -- Monthly Usage - Users can view own
 CREATE POLICY "Users can view own usage" ON public.monthly_usage

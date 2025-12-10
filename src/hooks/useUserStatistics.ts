@@ -89,9 +89,46 @@ export function useUserStatistics(): UseUserStatisticsReturn {
 
   const updateStatistics = useCallback(
     async (updates: Partial<UserStatistics>) => {
-      if (!user || !statistics) return;
+      if (!user) return;
 
       try {
+        // Ensure statistics record exists
+        if (!statistics) {
+          const { data: existingStats, error: fetchError } = await supabase
+            .from('user_statistics')
+            .select('*')
+            .eq('user_id', user.id)
+            .single();
+
+          if (fetchError && fetchError.code !== 'PGRST116') {
+            throw fetchError;
+          }
+
+          if (!existingStats) {
+            // Create initial statistics record if it doesn't exist
+            const { data: newStats, error: insertError } = await supabase
+              .from('user_statistics')
+              .insert({
+                user_id: user.id,
+                total_documents_scanned: 0,
+                total_storage_used_bytes: 0,
+                successful_scans: 0,
+                failed_scans: 0,
+                total_reminders_created: 0,
+                total_reminders_completed: 0,
+                average_confidence_score: null,
+                most_common_document_type: null,
+                last_scan_date: null,
+              })
+              .select()
+              .single();
+
+            if (insertError) throw insertError;
+            setStatistics(newStats as UserStatistics);
+          }
+        }
+
+        // Now update the statistics
         const { data, error: updateError } = await supabase
           .from('user_statistics')
           .update({

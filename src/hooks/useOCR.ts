@@ -151,16 +151,16 @@ export const useOCR = (options: UseOCROptions = {}): UseOCRReturn => {
           await supabase.from('document_metadata').insert({
             ocr_result_id: ocrResultId,
             user_id: user.id,
-            vendor_name: result.extractedData?.vendor_name || null,
-            vendor_phone: result.extractedData?.vendor_phone || null,
-            vendor_email: result.extractedData?.vendor_email || null,
-            document_number: result.extractedData?.document_number || null,
-            document_date: result.extractedData?.document_date || null,
-            expiry_date: result.extractedData?.expiry_date || null,
-            renewal_date: result.extractedData?.renewal_date || null,
-            amount: result.extractedData?.amount ? parseFloat(result.extractedData.amount) : null,
-            currency: result.extractedData?.currency || 'USD',
-            notes: result.extractedData?.notes || null,
+            vendor_name: result.extractedFields?.vendor?.name || null,
+            vendor_phone: result.extractedFields?.vendor?.phone || null,
+            vendor_email: result.extractedFields?.vendor?.email || null,
+            document_number: result.extractedFields?.custom?.find(f => f.fieldName === 'document_number')?.value || null,
+            document_date: result.extractedFields?.dates?.invoiceDate || null,
+            expiry_date: result.extractedFields?.dates?.expiryDate || null,
+            renewal_date: result.extractedFields?.dates?.renewalDate || null,
+            amount: result.extractedFields?.amount?.total || null,
+            currency: result.extractedFields?.amount?.currency || 'USD',
+            notes: null,
           });
         } catch (metadataError) {
           console.error('Error saving document metadata:', metadataError);
@@ -170,17 +170,21 @@ export const useOCR = (options: UseOCROptions = {}): UseOCRReturn => {
       // Update user statistics
       if (user) {
         try {
+          const { count: docCount } = await supabase
+            .from('document_metadata')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', user.id);
+
+          const { count: scanCount } = await supabase
+            .from('ocr_results')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', user.id);
+
           await updateStatistics({
-            total_documents_scanned: (await supabase
-              .from('document_metadata')
-              .select('id', { count: 'exact' })
-              .eq('user_id', user.id)).count || 0,
-            successful_scans: ((await supabase
-              .from('ocr_results')
-              .select('id', { count: 'exact' })
-              .eq('user_id', user.id)).count || 0),
+            total_documents_scanned: docCount || 0,
+            successful_scans: scanCount || 0,
             last_scan_date: new Date().toISOString(),
-            average_confidence_score: result.metadata?.confidence_score || null,
+            average_confidence_score: result.confidence || null,
           });
         } catch (statsError) {
           console.error('Error updating statistics:', statsError);
