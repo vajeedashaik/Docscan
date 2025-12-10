@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { preprocessImage, analyzeImageQuality } from '@/lib/image-preprocessing';
 import { useAuth } from '@/contexts/AuthContext';
 import { useReminders } from '@/hooks/useReminders';
+import { useUserStatistics } from '@/hooks/useUserStatistics';
 import type { 
   UploadedFile, 
   OCRResult, 
@@ -42,6 +43,7 @@ export const useOCR = (options: UseOCROptions = {}): UseOCRReturn => {
 
   const { user } = useAuth();
   const { createRemindersFromOCR } = useReminders();
+  const { updateStatistics } = useUserStatistics();
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [results, setResults] = useState<OCRResult[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -141,11 +143,54 @@ export const useOCR = (options: UseOCROptions = {}): UseOCRReturn => {
       updateFileStatus(file.id, 'parsing', 80);
 
       const result = data.data as OCRResult;
+      const ocrResultId = data.jobId || result.id;
+      
+      // Save document metadata to database
+      if (user && ocrResultId) {
+        try {
+          await supabase.from('document_metadata').insert({
+            ocr_result_id: ocrResultId,
+            user_id: user.id,
+            vendor_name: result.extractedData?.vendor_name || null,
+            vendor_phone: result.extractedData?.vendor_phone || null,
+            vendor_email: result.extractedData?.vendor_email || null,
+            document_number: result.extractedData?.document_number || null,
+            document_date: result.extractedData?.document_date || null,
+            expiry_date: result.extractedData?.expiry_date || null,
+            renewal_date: result.extractedData?.renewal_date || null,
+            amount: result.extractedData?.amount ? parseFloat(result.extractedData.amount) : null,
+            currency: result.extractedData?.currency || 'USD',
+            notes: result.extractedData?.notes || null,
+          });
+        } catch (metadataError) {
+          console.error('Error saving document metadata:', metadataError);
+        }
+      }
+
+      // Update user statistics
+      if (user) {
+        try {
+          await updateStatistics({
+            total_documents_scanned: (await supabase
+              .from('document_metadata')
+              .select('id', { count: 'exact' })
+              .eq('user_id', user.id)).count || 0,
+            successful_scans: ((await supabase
+              .from('ocr_results')
+              .select('id', { count: 'exact' })
+              .eq('user_id', user.id)).count || 0),
+            last_scan_date: new Date().toISOString(),
+            average_confidence_score: result.metadata?.confidence_score || null,
+          });
+        } catch (statsError) {
+          console.error('Error updating statistics:', statsError);
+        }
+      }
       
       // Auto-create reminders from OCR results
       if (user && result.reminderData?.suggestedReminders?.length > 0) {
         await createRemindersFromOCR(
-          data.jobId || result.id,
+          ocrResultId,
           result.reminderData.suggestedReminders
         );
       }
@@ -172,7 +217,7 @@ export const useOCR = (options: UseOCROptions = {}): UseOCRReturn => {
 
       return null;
     }
-  }, [autoPreprocess, enhanceContrast, denoise, languages, extractReminders, user, createRemindersFromOCR]);
+  }, [autoPreprocess, enhanceContrast, denoise, languages, extractReminders, user, createRemindersFromOCR, updateStatistics]);
 
   const processFiles = useCallback(async () => {
     const pendingFiles = files.filter(f => f.status === 'pending');

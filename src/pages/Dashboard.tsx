@@ -12,14 +12,21 @@ import { Header } from '@/components/layout/Header';
 import { OCRModule } from '@/components/ocr/OCRModule';
 import { OCRDashboard } from '@/components/ocr/OCRDashboard';
 import { RemindersList } from '@/components/reminders/RemindersList';
+import { StatsGrid } from '@/components/dashboard/StatsGrid';
+import { DocumentList } from '@/components/dashboard/DocumentList';
 import { useReminders } from '@/hooks/useReminders';
+import { useUserStatistics } from '@/hooks/useUserStatistics';
+import { useDocumentMetadata } from '@/hooks/useDocumentMetadata';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const Dashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'upload' | 'reminders' | 'history'>('upload');
   const { user, isLoaded } = useUser();
   const { upcomingReminders } = useReminders();
+  const { statistics, isLoading: statsLoading } = useUserStatistics();
+  const { documents, isLoading: docsLoading, starDocument, deleteDocument } = useDocumentMetadata();
 
   // Show loading state while auth is being checked
   if (!isLoaded) {
@@ -126,10 +133,36 @@ const Dashboard: React.FC = () => {
           </div>
 
           {/* Main Content */}
-          <div className="flex-1 p-4">
-            {activeTab === 'upload' && <OCRModule />}
-            {activeTab === 'reminders' && <RemindersList showAll />}
-            {activeTab === 'history' && <OCRDashboard />}
+          <div className="flex-1 overflow-y-auto">
+            {activeTab === 'upload' && (
+              <div className="p-4 space-y-6">
+                <OCRModule />
+                <div className="space-y-4">
+                  <h2 className="text-lg font-semibold">Dashboard</h2>
+                  <StatsGrid statistics={statistics} isLoading={statsLoading} />
+                </div>
+                <DocumentList
+                  documents={documents}
+                  isLoading={docsLoading}
+                  onStar={starDocument}
+                  onDelete={deleteDocument}
+                />
+              </div>
+            )}
+            {activeTab === 'reminders' && (
+              <div className="p-4">
+                <RemindersList showAll />
+              </div>
+            )}
+            {activeTab === 'history' && (
+              <div className="p-4">
+                <div className="space-y-4 mb-6">
+                  <h2 className="text-lg font-semibold">Your Activity</h2>
+                  <StatsGrid statistics={statistics} isLoading={statsLoading} />
+                </div>
+                <OCRDashboard />
+              </div>
+            )}
           </div>
         </main>
       </div>
