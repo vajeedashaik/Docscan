@@ -116,6 +116,9 @@ export const useOCR = (options: UseOCROptions = {}): UseOCRReturn => {
       // Convert to base64
       const base64Data = await fileToBase64(processedBlob);
 
+      // Get auth session to pass to edge function
+      const { data: { session } } = await supabase.auth.getSession();
+
       // Call the OCR edge function
       const { data, error } = await supabase.functions.invoke('ocr-extract', {
         body: {
@@ -129,6 +132,9 @@ export const useOCR = (options: UseOCROptions = {}): UseOCRReturn => {
             extractReminders,
           },
         },
+        headers: {
+          'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
+        }
       });
 
       if (error) {
