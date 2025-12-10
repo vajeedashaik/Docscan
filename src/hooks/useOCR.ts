@@ -168,8 +168,12 @@ export const useOCR = (options: UseOCROptions = {}): UseOCRReturn => {
             currency: result.extractedFields?.amount?.currency || 'USD',
             notes: null,
           });
-        } catch (metadataError) {
-          console.error('Error saving document metadata:', metadataError);
+        } catch (metadataError: any) {
+          if (metadataError?.code === '406') {
+            console.warn('document_metadata table not available yet');
+          } else {
+            console.error('Error saving document metadata:', metadataError);
+          }
         }
       }
 
@@ -192,8 +196,12 @@ export const useOCR = (options: UseOCROptions = {}): UseOCRReturn => {
             last_scan_date: new Date().toISOString(),
             average_confidence_score: result.confidence || null,
           });
-        } catch (statsError) {
-          console.error('Error updating statistics:', statsError);
+        } catch (statsError: any) {
+          if (statsError?.code === '406') {
+            console.warn('user_statistics table not available yet');
+          } else {
+            console.error('Error updating statistics:', statsError);
+          }
         }
       }
       

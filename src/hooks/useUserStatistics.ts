@@ -50,15 +50,9 @@ export function useUserStatistics(): UseUserStatisticsReturn {
         .eq('user_id', user.id)
         .single();
 
-      if (fetchError && fetchError.code !== 'PGRST116') {
-        // PGRST116 = no rows returned
-        throw fetchError;
-      }
-
-      if (data) {
-        setStatistics(data as UserStatistics);
-      } else {
-        // Create initial statistics record if it doesn't exist
+      // If table doesn't exist (406) or no rows (PGRST116), create initial record
+      if ((fetchError?.code === 'PGRST116') || (fetchError?.status === 406) || !data) {
+        // Create initial statistics record
         const { data: newStats, error: insertError } = await supabase
           .from('user_statistics')
           .insert({
@@ -76,8 +70,17 @@ export function useUserStatistics(): UseUserStatisticsReturn {
           .select()
           .single();
 
-        if (insertError) throw insertError;
-        setStatistics(newStats as UserStatistics);
+        if (insertError && insertError.code !== 'PGRST116') {
+          console.warn('Could not create statistics record:', insertError);
+          // Set empty stats if table doesn't exist yet
+          setStatistics(null);
+        } else if (newStats) {
+          setStatistics(newStats as UserStatistics);
+        }
+      } else if (fetchError && fetchError.code !== 'PGRST116') {
+        throw fetchError;
+      } else if (data) {
+        setStatistics(data as UserStatistics);
       }
     } catch (err) {
       console.error('Error fetching statistics:', err);
@@ -93,18 +96,16 @@ export function useUserStatistics(): UseUserStatisticsReturn {
 
       try {
         // Ensure statistics record exists
-        if (!statistics) {
+        let currentStats = statistics;
+        
+        if (!currentStats) {
           const { data: existingStats, error: fetchError } = await supabase
             .from('user_statistics')
             .select('*')
             .eq('user_id', user.id)
             .single();
 
-          if (fetchError && fetchError.code !== 'PGRST116') {
-            throw fetchError;
-          }
-
-          if (!existingStats) {
+          if (fetchError?.code === 'PGRST116' || !existingStats) {
             // Create initial statistics record if it doesn't exist
             const { data: newStats, error: insertError } = await supabase
               .from('user_statistics')
@@ -123,8 +124,18 @@ export function useUserStatistics(): UseUserStatisticsReturn {
               .select()
               .single();
 
-            if (insertError) throw insertError;
-            setStatistics(newStats as UserStatistics);
+            if (insertError) {
+              if (insertError.code !== '406') { // Ignore "table not found" errors
+                throw insertError;
+              }
+              console.warn('user_statistics table not available yet');
+              return;
+            }
+            currentStats = newStats as UserStatistics;
+          } else if (fetchError) {
+            throw fetchError;
+          } else {
+            currentStats = existingStats as UserStatistics;
           }
         }
 
@@ -139,8 +150,17 @@ export function useUserStatistics(): UseUserStatisticsReturn {
           .select()
           .single();
 
-        if (updateError) throw updateError;
-        setStatistics(data as UserStatistics);
+        if (updateError) {
+          if (updateError.code === '406') {
+            // Table not available yet, skip silently
+            console.warn('user_statistics table not available yet');
+            return;
+          }
+          throw updateError;
+        }
+        if (data) {
+          setStatistics(data as UserStatistics);
+        }
       } catch (err) {
         console.error('Error updating statistics:', err);
         setError(err as Error);

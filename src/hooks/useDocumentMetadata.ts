@@ -56,8 +56,17 @@ export function useDocumentMetadata(): UseDocumentMetadataReturn {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (fetchError) throw fetchError;
-      setDocuments((data as DocumentMetadata[]) || []);
+      if (fetchError) {
+        if (fetchError.code === '406') {
+          // Table doesn't exist yet, return empty list
+          console.warn('document_metadata table not available yet');
+          setDocuments([]);
+        } else {
+          throw fetchError;
+        }
+      } else {
+        setDocuments((data as DocumentMetadata[]) || []);
+      }
     } catch (err) {
       console.error('Error fetching documents:', err);
       setError(err as Error);
