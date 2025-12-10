@@ -37,10 +37,10 @@ export function useDocumentMetadata(): UseDocumentMetadataReturn {
   const [documents, setDocuments] = useState<DocumentMetadata[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
-  const { user } = useAuth();
+  const { userId } = useAuth();
 
   const fetchDocuments = useCallback(async () => {
-    if (!user) {
+    if (!userId) {
       setDocuments([]);
       setIsLoading(false);
       return;
@@ -53,7 +53,7 @@ export function useDocumentMetadata(): UseDocumentMetadataReturn {
       const { data, error: fetchError } = await supabase
         .from('document_metadata')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .order('created_at', { ascending: false });
 
       if (fetchError) {
@@ -73,11 +73,11 @@ export function useDocumentMetadata(): UseDocumentMetadataReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
+  }, [userId]);
 
   const updateDocument = useCallback(
     async (id: string, updates: Partial<DocumentMetadata>) => {
-      if (!user) return;
+      if (!userId) return;
 
       try {
         const { error: updateError } = await supabase
@@ -87,7 +87,7 @@ export function useDocumentMetadata(): UseDocumentMetadataReturn {
             updated_at: new Date().toISOString(),
           })
           .eq('id', id)
-          .eq('user_id', user.id);
+          .eq('user_id', userId);
 
         if (updateError) throw updateError;
         await fetchDocuments();
@@ -96,19 +96,19 @@ export function useDocumentMetadata(): UseDocumentMetadataReturn {
         setError(err as Error);
       }
     },
-    [user, fetchDocuments]
+    [userId, fetchDocuments]
   );
 
   const deleteDocument = useCallback(
     async (id: string) => {
-      if (!user) return;
+      if (!userId) return;
 
       try {
         const { error: deleteError } = await supabase
           .from('document_metadata')
           .delete()
           .eq('id', id)
-          .eq('user_id', user.id);
+          .eq('user_id', userId);
 
         if (deleteError) throw deleteError;
         await fetchDocuments();
@@ -117,7 +117,7 @@ export function useDocumentMetadata(): UseDocumentMetadataReturn {
         setError(err as Error);
       }
     },
-    [user, fetchDocuments]
+    [userId, fetchDocuments]
   );
 
   const starDocument = useCallback(
@@ -131,17 +131,17 @@ export function useDocumentMetadata(): UseDocumentMetadataReturn {
   useEffect(() => {
     fetchDocuments();
 
-    if (!user) return;
+    if (!userId) return;
 
     const channel = supabase
-      .channel(`document_metadata:${user.id}`)
+      .channel(`document_metadata:${userId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'document_metadata',
-          filter: `user_id=eq.${user.id}`,
+          filter: `user_id=eq.${userId}`,
         },
         (payload) => {
           if (payload.eventType === 'INSERT') {
@@ -166,7 +166,7 @@ export function useDocumentMetadata(): UseDocumentMetadataReturn {
     return () => {
       channel.unsubscribe();
     };
-  }, [user, fetchDocuments]);
+  }, [userId, fetchDocuments]);
 
   return {
     documents,

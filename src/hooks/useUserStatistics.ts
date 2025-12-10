@@ -30,10 +30,10 @@ export function useUserStatistics(): UseUserStatisticsReturn {
   const [statistics, setStatistics] = useState<UserStatistics | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
-  const { user } = useAuth();
+  const { userId } = useAuth();
 
   const fetchStatistics = useCallback(async () => {
-    if (!user) {
+    if (!userId) {
       setStatistics(null);
       setIsLoading(false);
       return;
@@ -47,7 +47,7 @@ export function useUserStatistics(): UseUserStatisticsReturn {
       const { data, error: fetchError } = await supabase
         .from('user_statistics')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .single();
 
       // If table doesn't exist (406) or no rows (PGRST116), create initial record
@@ -56,7 +56,7 @@ export function useUserStatistics(): UseUserStatisticsReturn {
         const { data: newStats, error: insertError } = await supabase
           .from('user_statistics')
           .insert({
-            user_id: user.id,
+            user_id: userId,
             total_documents_scanned: 0,
             total_storage_used_bytes: 0,
             successful_scans: 0,
@@ -88,11 +88,11 @@ export function useUserStatistics(): UseUserStatisticsReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
+  }, [userId]);
 
   const updateStatistics = useCallback(
     async (updates: Partial<UserStatistics>) => {
-      if (!user) return;
+      if (!userId) return;
 
       try {
         // Ensure statistics record exists
@@ -102,7 +102,7 @@ export function useUserStatistics(): UseUserStatisticsReturn {
           const { data: existingStats, error: fetchError } = await supabase
             .from('user_statistics')
             .select('*')
-            .eq('user_id', user.id)
+            .eq('user_id', userId)
             .single();
 
           if (fetchError?.code === 'PGRST116' || !existingStats) {
@@ -110,7 +110,7 @@ export function useUserStatistics(): UseUserStatisticsReturn {
             const { data: newStats, error: insertError } = await supabase
               .from('user_statistics')
               .insert({
-                user_id: user.id,
+                user_id: userId,
                 total_documents_scanned: 0,
                 total_storage_used_bytes: 0,
                 successful_scans: 0,
@@ -146,7 +146,7 @@ export function useUserStatistics(): UseUserStatisticsReturn {
             ...updates,
             updated_at: new Date().toISOString(),
           })
-          .eq('user_id', user.id)
+          .eq('user_id', userId)
           .select()
           .single();
 
@@ -166,24 +166,24 @@ export function useUserStatistics(): UseUserStatisticsReturn {
         setError(err as Error);
       }
     },
-    [user, statistics]
+    [userId, statistics]
   );
 
   // Set up real-time subscription
   useEffect(() => {
     fetchStatistics();
 
-    if (!user) return;
+    if (!userId) return;
 
     const channel = supabase
-      .channel(`user_statistics:${user.id}`)
+      .channel(`user_statistics:${userId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'user_statistics',
-          filter: `user_id=eq.${user.id}`,
+          filter: `user_id=eq.${userId}`,
         },
         (payload) => {
           if (payload.new) {
@@ -196,7 +196,7 @@ export function useUserStatistics(): UseUserStatisticsReturn {
     return () => {
       channel.unsubscribe();
     };
-  }, [user, fetchStatistics]);
+  }, [userId, fetchStatistics]);
 
   return {
     statistics,

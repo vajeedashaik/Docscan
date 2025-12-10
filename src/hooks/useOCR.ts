@@ -41,7 +41,7 @@ export const useOCR = (options: UseOCROptions = {}): UseOCRReturn => {
     languages = ['en', 'hi'],
   } = options;
 
-  const { user } = useAuth();
+  const { user, userId } = useAuth();
   const { createRemindersFromOCR } = useReminders();
   const { updateStatistics } = useUserStatistics();
   const [files, setFiles] = useState<UploadedFile[]>([]);
@@ -126,7 +126,7 @@ export const useOCR = (options: UseOCROptions = {}): UseOCRReturn => {
           fileName: file.file.name,
           fileType: file.file.type,
           fileSize: file.file.size,
-          userId: user?.id,
+          userId: userId,
           options: {
             language: languages,
             extractReminders,
