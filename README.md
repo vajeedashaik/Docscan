@@ -1,11 +1,11 @@
-NOW# Welcome to your Lovable project
+# Welcome to your Lovable project
 
 ## Project info
 
 **URL**: https://lovable.dev/projects/85a3937c-d0be-414b-b7c8-8c9
 i want u to atleast cm on meets and text like this 
 **Use Lovable**
-# 
+
 Simply visit the [Lovable Project](https://lovable.dev/projects/85a3937c-d0be-414b-b7c8-8c9544de4aa2) and start prompting.
 
 Changes made via Lovable will be committed automatically to this repo.
@@ -66,6 +66,4 @@ Yes, you can!
 
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)oh now its working dem i unfillowed ueeheheheehe
-ehehehehee i unflloweed u
-one uce was aksing me what achievemt i ade in 2025 wha was i suppose to say bro got a bf? pulled a vadakkan? sar where did u go
+Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
