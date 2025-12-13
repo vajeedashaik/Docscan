@@ -1,11 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Max-Age': '86400',
 };
 
 // Supported languages for OCR
@@ -165,12 +163,6 @@ serve(async (req) => {
   }
 
   const startTime = Date.now();
-  let jobId: string | null = null;
-
-  // Initialize Supabase client
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
     const { imageBase64, fileName, fileType, fileSize, userId, options } = await req.json() as OCRRequest;
@@ -185,46 +177,9 @@ serve(async (req) => {
       );
     }
 
-    // Create job record in database
-    const { data: job, error: jobError } = await supabase
-      .from('ocr_jobs')
-      .insert({
-        file_name: fileName,
-        file_type: fileType,
-        file_size: fileSize,
-        user_id: userId || null,
-        status: 'processing',
-        started_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
-
-    if (jobError) {
-      console.error('Failed to create job record:', jobError);
-    } else {
-      jobId = job.id;
-      console.log(`Created OCR job: ${jobId}`);
-    }
-
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      console.error('LOVABLE_API_KEY not configured');
-      
-      // Log error to database
-      if (jobId) {
-        await supabase.from('ocr_jobs').update({ 
-          status: 'failed', 
-          error_message: 'OCR service not configured',
-          completed_at: new Date().toISOString()
-        }).eq('id', jobId);
-        
-        await supabase.from('ocr_errors').insert({
-          job_id: jobId,
-          error_code: 'CONFIG_ERROR',
-          error_message: 'LOVABLE_API_KEY not configured',
-        });
-      }
-      
+    const GOOGLE_VISION_API_KEY = Deno.env.get('GOOGLE_VISION_API_KEY');
+    if (!GOOGLE_VISION_API_KEY) {
+      console.error('GOOGLE_VISION_API_KEY not configured');
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -234,45 +189,62 @@ serve(async (req) => {
       );
     }
 
-    // Determine mime type for the image
-    let mimeType = 'image/jpeg';
-    if (fileType.includes('png')) mimeType = 'image/png';
-    else if (fileType.includes('webp')) mimeType = 'image/webp';
-    else if (fileType.includes('gif')) mimeType = 'image/gif';
-
     console.log(`Processing OCR for file: ${fileName}, type: ${fileType}, size: ${fileSize}`);
 
-    // Call Lovable AI with vision capabilities
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    // Call Google Cloud Vision API for text detection
+    const cleanBase64 = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
+    
+    const visionResponse = await fetch(
+      `https://vision.googleapis.com/v1/images:annotate?key=${GOOGLE_VISION_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requests: [
+            {
+              image: { content: cleanBase64 },
+              features: [
+                { type: 'TEXT_DETECTION' },
+                { type: 'DOCUMENT_TEXT_DETECTION' },
+              ],
+            },
+          ],
+        }),
+      }
+    );
+
+    // Process Vision API response
+    if (!visionResponse.ok) {
+      const errorText = await visionResponse.text();
+      console.error('Vision API error:', visionResponse.status, errorText);
+      throw new Error(`Google Vision API error: ${visionResponse.status}`);
+    }
+
+    const visionData = await visionResponse.json();
+    const responses = visionData.responses?.[0];
+
+    if (responses?.error) {
+      throw new Error(`Vision API error: ${responses.error.message}`);
+    }
+
+    const documentTextAnnotation = responses?.fullTextAnnotation;
+    const textAnnotations = responses?.textAnnotations || [];
+    const extractedText = documentTextAnnotation?.text || '';
+
+    console.log(`Extracted text length: ${extractedText.length} characters`);
+
+    // Now use Claude or Gemini to parse and structure the extracted text
+    // For now, we'll create a structured response from the raw text
+    const aiResponse = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + GOOGLE_VISION_API_KEY, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          {
-            role: 'system',
-            content: SYSTEM_PROMPT
-          },
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: `Analyze this document image and extract all structured information. Document hint: ${options?.documentTypeHint || 'auto-detect'}. Languages to consider: ${(options?.language || ['en', 'hi']).join(', ')}. Extract reminders: ${options?.extractReminders !== false}`
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: imageBase64.startsWith('data:') ? imageBase64 : `data:${mimeType};base64,${imageBase64}`
-                }
-              }
-            ]
-          }
-        ],
-      }),
+        contents: [{
+          parts: [{
+            text: SYSTEM_PROMPT + '\n\nExtracted text from document:\n' + extractedText + '\n\nDocument hint: ' + (options?.documentTypeHint || 'auto-detect') + '\nLanguages to consider: ' + (options?.language || ['en', 'hi']).join(', ') + '\nExtract reminders: ' + (options?.extractReminders !== false)
+          }]
+        }]
+      })
     });
 
     if (!aiResponse.ok) {
@@ -285,23 +257,6 @@ serve(async (req) => {
                            aiResponse.status === 402 ? 'OCR quota exceeded. Please contact support.' :
                            'Failed to process document';
       
-      // Log error to database
-      if (jobId) {
-        await supabase.from('ocr_jobs').update({ 
-          status: 'failed', 
-          error_message: errorMessage,
-          completed_at: new Date().toISOString(),
-          processing_time_ms: Date.now() - startTime
-        }).eq('id', jobId);
-        
-        await supabase.from('ocr_errors').insert({
-          job_id: jobId,
-          error_code: errorCode,
-          error_message: errorMessage,
-          error_details: { statusCode: aiResponse.status, response: errorText }
-        });
-      }
-      
       return new Response(
         JSON.stringify({ success: false, error: { code: errorCode, message: errorMessage } }),
         { status: aiResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -309,26 +264,10 @@ serve(async (req) => {
     }
 
     const aiData = await aiResponse.json();
-    const aiContent = aiData.choices?.[0]?.message?.content;
+    const aiContent = aiData.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!aiContent) {
       console.error('No content in AI response');
-      
-      if (jobId) {
-        await supabase.from('ocr_jobs').update({ 
-          status: 'failed', 
-          error_message: 'No extraction result returned',
-          completed_at: new Date().toISOString(),
-          processing_time_ms: Date.now() - startTime
-        }).eq('id', jobId);
-        
-        await supabase.from('ocr_errors').insert({
-          job_id: jobId,
-          error_code: 'EMPTY_RESPONSE',
-          error_message: 'No extraction result returned',
-        });
-      }
-      
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -356,23 +295,6 @@ serve(async (req) => {
       extractedData = JSON.parse(cleanContent);
     } catch (parseError) {
       console.error('Failed to parse AI response:', parseError, 'Content:', aiContent);
-      
-      if (jobId) {
-        await supabase.from('ocr_jobs').update({ 
-          status: 'failed', 
-          error_message: 'Failed to parse extraction results',
-          completed_at: new Date().toISOString(),
-          processing_time_ms: Date.now() - startTime
-        }).eq('id', jobId);
-        
-        await supabase.from('ocr_errors').insert({
-          job_id: jobId,
-          error_code: 'PARSE_ERROR',
-          error_message: 'Failed to parse extraction results',
-          error_details: { rawContent: aiContent }
-        });
-      }
-      
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -387,7 +309,7 @@ serve(async (req) => {
 
     // Build the final OCR result
     const ocrResult = {
-      id: jobId || crypto.randomUUID(),
+      id: crypto.randomUUID(),
       status: 'completed',
       documentType: extractedData.documentType || 'unknown',
       extractedFields: extractedData.extractedFields || {
@@ -406,7 +328,7 @@ serve(async (req) => {
         pageCount: 1,
         processedAt: new Date().toISOString(),
         processingDuration,
-        ocrEngine: 'lovable-ai-vision',
+        ocrEngine: 'google-cloud-vision',
         language: extractedData.detectedLanguages || ['en'],
         imageQuality: 'medium',
         preprocessingApplied: ['ai-enhancement']
@@ -417,70 +339,15 @@ serve(async (req) => {
       } : undefined
     };
 
-    // Update job and save result to database
-    if (jobId) {
-      await supabase.from('ocr_jobs').update({
-        status: 'completed',
-        completed_at: new Date().toISOString(),
-        processing_time_ms: processingDuration
-      }).eq('id', jobId);
-
-      // Save OCR result
-      const { error: resultError } = await supabase.from('ocr_results').insert({
-        job_id: jobId,
-        document_type: ocrResult.documentType,
-        raw_text: ocrResult.rawText,
-        confidence: ocrResult.confidence,
-        extracted_data: ocrResult.extractedFields,
-        vendor_details: ocrResult.extractedFields.vendor,
-        product_details: ocrResult.extractedFields.product,
-        date_details: ocrResult.extractedFields.dates,
-        reminder_suggestions: ocrResult.reminderData?.suggestedReminders || [],
-        metadata: ocrResult.metadata
-      });
-
-      if (resultError) {
-        console.error('Failed to save OCR result:', resultError);
-      }
-
-      // Log any extraction errors/warnings
-      if (ocrResult.errors && ocrResult.errors.length > 0) {
-        for (const err of ocrResult.errors) {
-          await supabase.from('ocr_errors').insert({
-            job_id: jobId,
-            error_code: err.code,
-            error_message: err.message,
-            error_details: { field: err.field, severity: err.severity }
-          });
-        }
-      }
-    }
-
     console.log(`OCR completed in ${processingDuration}ms, confidence: ${ocrResult.confidence}`);
 
     return new Response(
-      JSON.stringify({ success: true, data: ocrResult, jobId }),
+      JSON.stringify({ success: true, data: ocrResult }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
     console.error('OCR processing error:', error);
-    
-    // Log error to database
-    if (jobId) {
-      await supabase.from('ocr_jobs').update({ 
-        status: 'failed', 
-        error_message: error instanceof Error ? error.message : 'Unknown error',
-        completed_at: new Date().toISOString(),
-        processing_time_ms: Date.now() - startTime
-      }).eq('id', jobId);
-      
-      await supabase.from('ocr_errors').insert({
-        job_id: jobId,
-        error_code: 'PROCESSING_ERROR',
-        error_message: error instanceof Error ? error.message : 'Unknown error occurred',
-      });
-    }
     
     return new Response(
       JSON.stringify({ 

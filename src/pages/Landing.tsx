@@ -2,6 +2,7 @@ import React from 'react';
 import { Helmet } from 'react-helmet';
 import { useNavigate } from 'react-router-dom';
 import { SignedIn, SignedOut, SignInButton, SignUpButton, useUser } from '@clerk/clerk-react';
+import { dark, light } from '@clerk/themes';
 import { Button } from '@/components/ui/button';
 import { Navbar } from '@/components/layout/Navbar';
 import { 
@@ -103,13 +104,13 @@ const Landing: React.FC = () => {
 
                 {/* CTA Buttons */}
                 <div className="flex flex-col sm:flex-row gap-4 animate-fade-in-up animation-delay-400">
-                  <SignUpButton mode="modal">
+                  <SignUpButton mode="modal" appearance={{ baseTheme: theme === 'dark' ? dark : light }}>
                     <Button size="lg" className="gap-2 bg-gradient-to-r from-primary to-accent hover:shadow-lg hover:shadow-primary/50 transition-all duration-300 hover:scale-105">
                       Start Free
                       <ArrowRight className="h-4 w-4" />
                     </Button>
                   </SignUpButton>
-                  <SignInButton mode="modal">
+                  <SignInButton mode="modal" appearance={{ baseTheme: theme === 'dark' ? dark : light }}>
                     <Button size="lg" variant="outline" className="hover:bg-card/80 transition-all duration-300 hover:scale-105">
                       Sign In
                     </Button>
@@ -280,13 +281,13 @@ const Landing: React.FC = () => {
                     Join users who've already taken control of their document deadlines
                   </p>
                   <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4 animate-fade-in-up">
-                    <SignUpButton mode="modal">
+                    <SignUpButton mode="modal" appearance={{ baseTheme: theme === 'dark' ? dark : light }}>
                       <Button size="lg" className="gap-2 bg-gradient-to-r from-primary to-accent hover:shadow-lg hover:shadow-primary/50 transition-all duration-300 hover:scale-105">
                         Create Free Account
                         <ArrowRight className="h-4 w-4" />
                       </Button>
                     </SignUpButton>
-                    <SignInButton mode="modal">
+                    <SignInButton mode="modal" appearance={{ baseTheme: theme === 'dark' ? dark : light }}>
                       <Button size="lg" variant="outline" className="hover:bg-card/80 transition-all duration-300 hover:scale-105">
                         Sign In
                       </Button>

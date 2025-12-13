@@ -1,5 +1,5 @@
 # Welcome to your Lovable project
-
+# 
 ## Project info
 
 **URL**: https://lovable.dev/projects/85a3937c-d0be-414b-b7c8-8c9
@@ -31,7 +31,7 @@ npm i
 # Step 4: Start the development server with auto-reloading and an instant preview.
 npm run dev
 ```
-
+ 
 **Edit a file directly in GitHub**
 
 - Navigate to the desired file(s).

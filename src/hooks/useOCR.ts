@@ -115,84 +115,154 @@ export const useOCR = (options: UseOCROptions = {}): UseOCRReturn => {
 
       // Convert to base64
       const base64Data = await fileToBase64(processedBlob);
+      const cleanBase64 = base64Data.split(',')[1] || base64Data;
 
-      // Get auth session to pass to edge function
-      const { data: { session } } = await supabase.auth.getSession();
+      updateFileStatus(file.id, 'extracting', 50);
 
-      // Call the OCR edge function
-      const { data, error } = await supabase.functions.invoke('ocr-extract', {
-        body: {
-          imageBase64: base64Data,
+      // Get API key from environment
+      const apiKey = import.meta.env.VITE_GOOGLE_VISION_API_KEY;
+      if (!apiKey) {
+        throw new Error('Google Vision API key not configured in environment');
+      }
+
+      let fullTextAnnotation: string;
+      let confidence: number;
+
+      console.log('Calling Google Vision API...');
+      
+      // Simple direct fetch to Google Vision API
+      const visionRequestBody = {
+        requests: [
+          {
+            image: { content: cleanBase64 },
+            features: [
+              { type: 'TEXT_DETECTION' },
+              { type: 'DOCUMENT_TEXT_DETECTION' },
+            ],
+          },
+        ],
+      };
+
+      console.log('Request body size:', JSON.stringify(visionRequestBody).length);
+
+      try {
+        const visionResponse = await fetch(
+          `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(visionRequestBody),
+          }
+        );
+
+        console.log(`Vision API response status: ${visionResponse.status}`);
+
+        const responseText = await visionResponse.text();
+        console.log('Vision API raw response:', responseText.substring(0, 200));
+
+        if (!visionResponse.ok) {
+          console.error('Vision API HTTP error:', visionResponse.status);
+          throw new Error(`Google Vision API HTTP ${visionResponse.status}: ${responseText}`);
+        }
+
+        const visionData = JSON.parse(responseText);
+        const responses = visionData.responses?.[0];
+
+        if (!responses) {
+          throw new Error('No response from Vision API');
+        }
+
+        if (responses.error) {
+          console.error('Vision API returned error:', responses.error);
+          throw new Error(`Vision API error: ${responses.error.message}`);
+        }
+
+        // Extract text from response
+        const documentTextAnnotation = responses.fullTextAnnotation;
+        const extractedText = documentTextAnnotation?.text || '';
+        const textAnnotations = responses.textAnnotations || [];
+
+        console.log(`Extracted ${extractedText.length} characters from image`);
+
+        updateFileStatus(file.id, 'parsing', 70);
+
+        // Create result with extracted text
+        fullTextAnnotation = extractedText;
+        confidence = textAnnotations.length > 0 ? 0.95 : 0.70;
+
+      } catch (visionError) {
+        console.error('Vision API call failed:', visionError);
+        throw new Error(`OCR failed: ${visionError instanceof Error ? visionError.message : String(visionError)}`);
+      }
+
+      // Create result from OCR
+      const result: OCRResult = {
+        id: crypto.randomUUID(),
+        documentType: 'invoice', // Default to invoice for now
+        status: 'completed',
+        confidence: confidence,
+        extractedFields: {
+          vendor: {
+            name: null,
+            address: null,
+            phone: null,
+            email: null,
+            gstin: null,
+            pan: null,
+          },
+          product: {
+            name: null,
+            model: null,
+            serialNumber: null,
+            category: null,
+            quantity: null,
+            unitPrice: null,
+            totalPrice: null,
+          },
+          dates: {
+            purchaseDate: null,
+            warrantyExpiry: null,
+            serviceInterval: null,
+            nextServiceDue: null,
+            invoiceDate: null,
+          },
+          amount: {
+            subtotal: null,
+            tax: null,
+            total: null,
+            currency: 'INR',
+          },
+          custom: [],
+        },
+        rawText: fullTextAnnotation,
+        reminderData: {
+          suggestedReminders: [],
+        },
+        metadata: {
           fileName: file.file.name,
           fileType: file.file.type,
           fileSize: file.file.size,
-          userId: userId,
-          options: {
-            language: languages,
-            extractReminders,
-          },
+          pageCount: 1,
+          language: languages,
+          processedAt: new Date().toISOString(),
+          processingDuration: 0,
+          ocrEngine: 'google-cloud-vision',
+          imageQuality: confidence > 0.7 ? 'high' : confidence > 0.4 ? 'medium' : 'low',
+          preprocessingApplied: [],
         },
-        headers: {
-          'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
-        }
-      });
-
-      if (error) {
-        console.error('OCR function error:', error);
-        throw new Error(error.message || 'OCR extraction failed');
-      }
-
-      if (!data.success) {
-        throw new Error(data.error?.message || 'OCR extraction failed');
-      }
+        errors: [],
+      };
 
       updateFileStatus(file.id, 'parsing', 80);
-
-      const result = data.data as OCRResult;
-      const ocrResultId = data.jobId || result.id;
-      
-      // Save document metadata to database
-      if (user && ocrResultId) {
-        try {
-          await supabase.from('document_metadata').insert({
-            ocr_result_id: ocrResultId,
-            user_id: user.id,
-            vendor_name: result.extractedFields?.vendor?.name || null,
-            vendor_phone: result.extractedFields?.vendor?.phone || null,
-            vendor_email: result.extractedFields?.vendor?.email || null,
-            document_number: result.extractedFields?.custom?.find(f => f.fieldName === 'document_number')?.value || null,
-            document_date: result.extractedFields?.dates?.invoiceDate || null,
-            expiry_date: result.extractedFields?.dates?.expiryDate || null,
-            renewal_date: result.extractedFields?.dates?.renewalDate || null,
-            amount: result.extractedFields?.amount?.total || null,
-            currency: result.extractedFields?.amount?.currency || 'USD',
-            notes: null,
-          });
-        } catch (metadataError: any) {
-          if (metadataError?.code === '406') {
-            console.warn('document_metadata table not available yet');
-          } else {
-            console.error('Error saving document metadata:', metadataError);
-          }
-        }
-      }
-
+    
+      const ocrResultId = result.id;
+    
       // Update user statistics
       if (user) {
         try {
-          const { count: docCount } = await supabase
-            .from('document_metadata')
-            .select('id', { count: 'exact', head: true })
-            .eq('user_id', user.id);
-
-          const { count: scanCount } = await supabase
-            .from('ocr_results')
-            .select('id', { count: 'exact', head: true })
-            .eq('user_id', user.id);
-
           await updateStatistics({
-            total_documents_scanned: docCount || 0,
-            successful_scans: scanCount || 0,
+            total_documents_scanned: 1,
+            successful_scans: 1,
             last_scan_date: new Date().toISOString(),
             average_confidence_score: result.confidence || null,
           });

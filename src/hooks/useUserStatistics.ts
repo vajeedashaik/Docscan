@@ -50,37 +50,58 @@ export function useUserStatistics(): UseUserStatisticsReturn {
         .eq('user_id', userId)
         .single();
 
-      // If table doesn't exist (406) or no rows (PGRST116), create initial record
-      if ((fetchError?.code === 'PGRST116') || (fetchError?.status === 406) || !data) {
-        // Create initial statistics record
-        const { data: newStats, error: insertError } = await supabase
-          .from('user_statistics')
-          .insert({
-            user_id: userId,
-            total_documents_scanned: 0,
-            total_storage_used_bytes: 0,
-            successful_scans: 0,
-            failed_scans: 0,
-            total_reminders_created: 0,
-            total_reminders_completed: 0,
-            average_confidence_score: null,
-            most_common_document_type: null,
-            last_scan_date: null,
-          })
-          .select()
-          .single();
-
-        if (insertError && insertError.code !== 'PGRST116') {
-          console.warn('Could not create statistics record:', insertError);
-          // Set empty stats if table doesn't exist yet
-          setStatistics(null);
-        } else if (newStats) {
-          setStatistics(newStats as UserStatistics);
-        }
-      } else if (fetchError && fetchError.code !== 'PGRST116') {
-        throw fetchError;
-      } else if (data) {
+      // If row exists, use it
+      if (data) {
         setStatistics(data as UserStatistics);
+        setIsLoading(false);
+        return;
+      }
+
+      // If no rows found (PGRST116), create initial record
+      if (fetchError?.code === 'PGRST116') {
+        try {
+          const { data: newStats, error: insertError } = await supabase
+            .from('user_statistics')
+            .insert({
+              user_id: userId,
+              total_documents_scanned: 0,
+              total_storage_used_bytes: 0,
+              successful_scans: 0,
+              failed_scans: 0,
+              total_reminders_created: 0,
+              total_reminders_completed: 0,
+              average_confidence_score: null,
+              most_common_document_type: null,
+              last_scan_date: null,
+            })
+            .select()
+            .single();
+
+          if (insertError) {
+            // If duplicate key error (23505), try to fetch again
+            if (insertError.code === '23505' || insertError.code === 'PGRST116') {
+              const { data: existingData } = await supabase
+                .from('user_statistics')
+                .select('*')
+                .eq('user_id', userId)
+                .single();
+              if (existingData) {
+                setStatistics(existingData as UserStatistics);
+              }
+            } else {
+              console.warn('Could not create statistics record:', insertError);
+            }
+          } else if (newStats) {
+            setStatistics(newStats as UserStatistics);
+          }
+        } catch (insertErr) {
+          console.warn('Could not create statistics record:', insertErr);
+        }
+      } else if (fetchError) {
+        // Ignore 406 and other transient errors during load
+        if (fetchError.status !== 406) {
+          throw fetchError;
+        }
       }
     } catch (err) {
       console.error('Error fetching statistics:', err);
@@ -151,8 +172,8 @@ export function useUserStatistics(): UseUserStatisticsReturn {
           .single();
 
         if (updateError) {
-          if (updateError.code === '406') {
-            // Table not available yet, skip silently
+          // If table not found or other transient errors, skip silently
+          if (updateError.code === '406' || updateError.code === 'PGRST116') {
             console.warn('user_statistics table not available yet');
             return;
           }

@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Moon, Sun, Menu, X } from 'lucide-react';
 import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/clerk-react';
+import { dark, light } from '@clerk/themes';
 import { cn } from '@/lib/utils';
 
 export const Navbar: React.FC = () => {
@@ -80,14 +81,23 @@ export const Navbar: React.FC = () => {
             {/* Auth */}
             <div className="hidden sm:flex items-center gap-2">
               <SignedOut>
-                <SignInButton mode="modal">
+                <SignInButton mode="modal" appearance={{ baseTheme: theme === 'dark' ? dark : light }}>
                   <Button variant="outline" size="sm">
                     Sign In
                   </Button>
                 </SignInButton>
               </SignedOut>
               <SignedIn>
-                <UserButton />
+                <UserButton 
+                  appearance={{ 
+                    baseTheme: theme === 'dark' ? dark : light,
+                    elements: {
+                      userButtonBox: "transition-all",
+                      userButtonTrigger: "focus:shadow-none"
+                    }
+                  }} 
+                  userProfileMode="modal"
+                />
               </SignedIn>
             </div>
 
@@ -123,14 +133,23 @@ export const Navbar: React.FC = () => {
             ))}
             <div className="px-4 py-2">
               <SignedOut>
-                <SignInButton mode="modal">
+                <SignInButton mode="modal" appearance={{ baseTheme: theme === 'dark' ? dark : light }}>
                   <Button variant="outline" size="sm" className="w-full">
                     Sign In
                   </Button>
                 </SignInButton>
               </SignedOut>
               <SignedIn>
-                <UserButton />
+                <UserButton 
+                  appearance={{ 
+                    baseTheme: theme === 'dark' ? dark : light,
+                    elements: {
+                      userButtonBox: "transition-all",
+                      userButtonTrigger: "focus:shadow-none"
+                    }
+                  }}
+                  userProfileMode="modal"
+                />
               </SignedIn>
             </div>
           </nav>

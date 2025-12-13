@@ -1,12 +1,39 @@
 import React from 'react';
 import { Helmet } from 'react-helmet';
 import { PricingTable } from '@clerk/clerk-react';
+import { dark, light } from '@clerk/themes';
 import { Check } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Navbar } from '@/components/layout/Navbar';
 
 const PricingPage: React.FC = () => {
+  const [theme, setTheme] = React.useState<'light' | 'dark'>('dark');
+
+  React.useEffect(() => {
+    // Function to get current theme
+    const getCurrentTheme = (): 'light' | 'dark' => {
+      const root = window.document.documentElement;
+      return root.classList.contains('light') ? 'light' : 'dark';
+    };
+
+    // Set initial theme
+    setTheme(getCurrentTheme());
+
+    // Watch for changes to the document element's class
+    const observer = new MutationObserver(() => {
+      setTheme(getCurrentTheme());
+    });
+
+    observer.observe(window.document.documentElement, { 
+      attributes: true, 
+      attributeFilter: ['class'],
+      attributeOldValue: true
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
   const features = [
     { name: 'AI-Powered OCR', description: 'Extract text from any document' },
     { name: 'Unlimited Scanning', description: 'Process as many documents as you need' },
@@ -42,126 +69,7 @@ const PricingPage: React.FC = () => {
             </p>
           </div>
 
-          {/* Pricing Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
-            {/* Free Plan */}
-            <Card className="border-border/50 relative overflow-hidden group hover:shadow-lg hover:shadow-primary/20 transition-all duration-300">
-              <CardHeader>
-                <CardTitle>Free</CardTitle>
-                <CardDescription>Get started with basic features</CardDescription>
-                <div className="mt-4">
-                  <span className="text-3xl font-bold">$0</span>
-                  <span className="text-muted-foreground">/month</span>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Button className="w-full bg-gradient-to-r from-primary to-accent hover:shadow-lg">
-                  Get Started
-                </Button>
-                <div className="space-y-3 pt-4 border-t border-border">
-                  <div className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">5 scans/month</span>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Basic text extraction</span>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Community support</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
 
-            {/* Pro Plan - Featured */}
-            <Card className="border-primary/50 relative overflow-hidden group hover:shadow-lg hover:shadow-primary/30 transition-all duration-300 md:scale-105">
-              <div className="absolute inset-0 bg-gradient-to-r from-primary/10 to-accent/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-              <div className="absolute -inset-1 bg-gradient-to-r from-primary to-accent rounded-lg blur opacity-0 group-hover:opacity-20 transition-opacity duration-300 pointer-events-none"></div>
-              <CardHeader className="relative">
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <CardTitle>Pro</CardTitle>
-                    <CardDescription>Perfect for most users</CardDescription>
-                  </div>
-                  <span className="text-xs font-semibold text-primary bg-primary/20 px-3 py-1 rounded-full">
-                    Popular
-                  </span>
-                </div>
-                <div className="mt-4">
-                  <span className="text-3xl font-bold">$9.99</span>
-                  <span className="text-muted-foreground">/month</span>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4 relative">
-                <Button className="w-full bg-gradient-to-r from-primary to-accent hover:shadow-lg">
-                  Start Free Trial
-                </Button>
-                <div className="space-y-3 pt-4 border-t border-border">
-                  <div className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Unlimited scans</span>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Advanced text extraction</span>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Smart reminders</span>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Cloud storage</span>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Priority support</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Enterprise Plan */}
-            <Card className="border-border/50 relative overflow-hidden group hover:shadow-lg hover:shadow-primary/20 transition-all duration-300">
-              <CardHeader>
-                <CardTitle>Enterprise</CardTitle>
-                <CardDescription>Advanced features for teams</CardDescription>
-                <div className="mt-4">
-                  <span className="text-3xl font-bold">Custom</span>
-                  <span className="text-muted-foreground"> pricing</span>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Button variant="outline" className="w-full">
-                  Contact Sales
-                </Button>
-                <div className="space-y-3 pt-4 border-t border-border">
-                  <div className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Everything in Pro</span>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Team collaboration</span>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Custom integrations</span>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Dedicated support</span>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">SLA guarantee</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
 
           {/* Clerk Pricing Table */}
           <div className="mb-16">
@@ -172,7 +80,7 @@ const PricingPage: React.FC = () => {
               </p>
             </div>
             <div className="bg-card/50 backdrop-blur border border-border/50 rounded-lg p-8">
-              <PricingTable />
+              <PricingTable appearance={{ baseTheme: theme === 'dark' ? dark : light }} />
             </div>
           </div>
 
