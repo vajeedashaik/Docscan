@@ -50,15 +50,15 @@ export function useOCRStats(): UseOCRStatsReturn {
   const [averageProcessingTime, setAverageProcessingTime] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
-  const { user } = useAuth();
+  const { userId } = useAuth();
 
   const fetchStats = useCallback(async () => {
-    if (!user?.userId) {
+    if (!userId) {
       console.log('No user ID available, skipping fetch');
       return;
     }
 
-    console.log('Fetching OCR stats for user:', user.userId);
+    console.log('Fetching OCR stats for user:', userId);
     setIsLoading(true);
     setError(null);
 
@@ -67,7 +67,7 @@ export function useOCRStats(): UseOCRStatsReturn {
       const { data: jobs, error: jobsError } = await supabase
         .from('ocr_jobs')
         .select('*')
-        .eq('user_id', user.userId)
+        .eq('user_id', userId)
         .order('created_at', { ascending: false });
 
       console.log('OCR jobs fetched:', jobs?.length, 'error:', jobsError);
@@ -123,12 +123,12 @@ export function useOCRStats(): UseOCRStatsReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [user?.userId]);
+  }, [userId]);
 
   // Initial fetch and refetch when user changes
   useEffect(() => {
     const performFetch = async () => {
-      if (!user?.userId) {
+      if (!userId) {
         console.log('No user ID available, skipping fetch');
         return;
       }
@@ -139,7 +139,7 @@ export function useOCRStats(): UseOCRStatsReturn {
 
     performFetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.userId]);
+  }, [userId]);
 
   const totalStorageUsedGB = (totalStorageUsed / (1024 * 1024 * 1024)).toFixed(2);
 

@@ -1,11 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Moon, Sun } from 'lucide-react';
 import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/clerk-react';
+import { NotificationPreferences } from '@/components/notifications/NotificationPreferences';
 
 export const Header: React.FC = () => {
   const [theme, setTheme] = React.useState<'light' | 'dark'>('dark');
+  const [showNotifications, setShowNotifications] = useState(false);
 
   React.useEffect(() => {
     const root = window.document.documentElement;
@@ -35,6 +37,23 @@ export const Header: React.FC = () => {
             >
               {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
+
+            {/* Notifications */}
+            <SignedIn>
+              {showNotifications ? (
+                <NotificationPreferences />
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowNotifications(true)}
+                  className="h-9 w-9"
+                  title="Notification preferences"
+                >
+                  <Sun className="h-4 w-4" />
+                </Button>
+              )}
+            </SignedIn>
 
             {/* Clerk Auth */}
             <SignedOut>

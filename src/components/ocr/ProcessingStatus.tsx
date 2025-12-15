@@ -23,12 +23,12 @@ const statusConfig: Record<Status, { icon: React.ElementType; label: string; col
   },
   extracting: {
     icon: Brain,
-    label: 'Extracting text (AI OCR)',
+    label: 'Extracting text with AI',
     color: 'text-primary',
   },
   parsing: {
     icon: Loader2,
-    label: 'Parsing entities',
+    label: 'Parsing & organizing',
     color: 'text-accent',
   },
   completed: {
@@ -54,13 +54,13 @@ export const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
   const isAnimating = ['preprocessing', 'extracting', 'parsing'].includes(status);
 
   return (
-    <div className="card-elevated p-6">
+    <div className="shadow-md rounded-lg border border-border bg-card p-6 transition-smooth">
       <div className="flex items-center gap-4">
         <div className={cn(
-          'p-3 rounded-xl transition-all duration-300',
-          status === 'completed' && 'bg-success/10',
-          status === 'failed' && 'bg-destructive/10',
-          isAnimating && 'bg-primary/10'
+          'p-3 rounded-xl transition-all duration-300 flex-shrink-0',
+          status === 'completed' && 'bg-success/15',
+          status === 'failed' && 'bg-destructive/15',
+          isAnimating && 'bg-primary/15'
         )}>
           <Icon className={cn(
             'h-6 w-6',
@@ -69,12 +69,12 @@ export const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
           )} />
         </div>
 
-        <div className="flex-1">
-          <p className={cn('font-medium', config.color)}>
+        <div className="flex-1 min-w-0">
+          <p className={cn('font-semibold text-sm', config.color)}>
             {config.label}
           </p>
           {fileName && (
-            <p className="text-sm text-muted-foreground mt-0.5">
+            <p className="text-xs text-muted-foreground mt-1 truncate">
               {fileName}
             </p>
           )}
@@ -86,8 +86,8 @@ export const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
         </div>
 
         {isAnimating && progress > 0 && (
-          <div className="text-right">
-            <span className="text-2xl font-semibold text-primary">
+          <div className="text-right flex-shrink-0">
+            <span className="text-2xl font-bold text-primary">
               {Math.round(progress)}%
             </span>
           </div>
@@ -96,10 +96,10 @@ export const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
 
       {/* Progress Bar */}
       {isAnimating && (
-        <div className="mt-4">
-          <div className="h-2 bg-secondary rounded-full overflow-hidden">
+        <div className="mt-5">
+          <div className="h-2.5 bg-secondary rounded-full overflow-hidden shadow-inner-sm">
             <div
-              className="h-full gradient-primary transition-all duration-500 ease-out rounded-full"
+              className="h-full gradient-primary transition-all duration-500 ease-out rounded-full shadow-glow-sm"
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -108,7 +108,7 @@ export const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
 
       {/* Processing Steps */}
       {isAnimating && (
-        <div className="mt-4 grid grid-cols-4 gap-2">
+        <div className="mt-5 grid grid-cols-4 gap-2">
           {['preprocessing', 'extracting', 'parsing', 'completed'].map((step, index) => {
             const stepIndex = ['preprocessing', 'extracting', 'parsing', 'completed'].indexOf(status);
             const isComplete = index < stepIndex;
@@ -118,19 +118,19 @@ export const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
               <div
                 key={step}
                 className={cn(
-                  'flex flex-col items-center gap-1 p-2 rounded-lg transition-all duration-300',
-                  isComplete && 'bg-success/10',
-                  isCurrent && 'bg-primary/10',
-                  !isComplete && !isCurrent && 'opacity-40'
+                  'flex flex-col items-center gap-1.5 p-2.5 rounded-lg transition-all duration-300 border',
+                  isComplete && 'bg-success/10 border-success/30',
+                  isCurrent && 'bg-primary/10 border-primary/30 shadow-md',
+                  !isComplete && !isCurrent && 'opacity-50 border-border/30'
                 )}
               >
                 <div className={cn(
-                  'w-2 h-2 rounded-full',
-                  isComplete && 'bg-success',
+                  'w-2.5 h-2.5 rounded-full transition-all',
+                  isComplete && 'bg-success scale-125',
                   isCurrent && 'bg-primary animate-pulse',
                   !isComplete && !isCurrent && 'bg-muted-foreground'
                 )} />
-                <span className="text-xs text-center capitalize">
+                <span className="text-xs text-center capitalize font-semibold">
                   {step === 'preprocessing' ? 'Enhance' : 
                    step === 'extracting' ? 'OCR' :
                    step === 'parsing' ? 'Parse' : 'Done'}

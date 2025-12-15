@@ -6,9 +6,21 @@ import { Zap, FileText, CheckCircle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { OCRModule } from '@/components/ocr/OCRModule';
 import { Navbar } from '@/components/layout/Navbar';
+import { useDocumentMetadata } from '@/hooks/useDocumentMetadata';
 
 const OCRPage: React.FC = () => {
   const { user, isLoaded } = useUser();
+  const { refetch } = useDocumentMetadata();
+
+  const handleScanComplete = async () => {
+    console.log('OCRPage: handleScanComplete called, refetching documents...');
+    try {
+      await refetch();
+      console.log('OCRPage: Documents refetched successfully');
+    } catch (error) {
+      console.error('OCRPage: Error refetching documents:', error);
+    }
+  };
 
   if (!isLoaded) {
     return (
@@ -103,7 +115,7 @@ const OCRPage: React.FC = () => {
 
             {/* OCR Module */}
             <div className="mb-12">
-              <OCRModule />
+              <OCRModule onScanComplete={handleScanComplete} />
             </div>
           </div>
         </main>

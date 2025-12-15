@@ -233,18 +233,47 @@ export const detectDocumentType = (text: string): { type: DocumentType; confiden
 };
 
 /**
- * Extract vendor details
+ * Extract document title from text or filename
+ * Simplified to focus on getting a meaningful title
+ */
+export const extractDocumentTitle = (text: string, fileName?: string): string => {
+  // Try to extract from first meaningful line
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  
+  for (let i = 0; i < Math.min(5, lines.length); i++) {
+    const line = lines[i];
+    // Skip lines that look like addresses, dates, or contain common keywords
+    if (line.length > 5 && line.length < 100 && 
+        !line.match(/\d{5,}/) && 
+        !line.match(/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}/) && // Skip date patterns
+        !line.toLowerCase().includes('invoice') &&
+        !line.toLowerCase().includes('receipt') &&
+        !line.toLowerCase().includes('bill') &&
+        !line.toLowerCase().includes('warranty')) {
+      return line;
+    }
+  }
+  
+  // Fallback to filename without extension
+  if (fileName) {
+    return fileName.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+  }
+  
+  // Last resort: use document type
+  const { type } = detectDocumentType(text);
+  return type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+};
+
+/**
+ * Extract vendor details (simplified - minimal extraction for backward compatibility)
  */
 export const extractVendorDetails = (text: string): VendorDetails => {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-  const emails = extractEmails(text);
-  const phones = extractPhoneNumbers(text);
   
-  // First few lines often contain vendor name
+  // First few lines often contain vendor/company name
   let name: string | null = null;
-  for (let i = 0; i < Math.min(5, lines.length); i++) {
+  for (let i = 0; i < Math.min(3, lines.length); i++) {
     const line = lines[i];
-    // Skip lines that look like addresses or contain common keywords
     if (line.length > 5 && line.length < 100 && 
         !line.match(/\d{5,}/) && 
         !line.toLowerCase().includes('invoice') &&
@@ -254,66 +283,33 @@ export const extractVendorDetails = (text: string): VendorDetails => {
     }
   }
   
-  // Extract address (look for patterns with PIN code)
-  let address: string | null = null;
-  const addressMatch = text.match(/[\w\s,]+(?:road|street|lane|nagar|colony|sector)[\w\s,]+\d{6}/gi);
-  if (addressMatch) {
-    address = addressMatch[0];
-  }
-  
   return {
     name,
-    address,
-    phone: phones[0] || null,
-    email: emails[0] || null,
-    gstin: extractGSTIN(text),
-    pan: extractPAN(text),
+    address: null,
+    phone: null,
+    email: null,
+    gstin: null,
+    pan: null,
   };
 };
 
 /**
- * Extract product details
+ * Extract product details (simplified - minimal extraction for backward compatibility)
  */
 export const extractProductDetails = (text: string): ProductDetails => {
-  const serials = extractSerialNumbers(text);
-  const amounts = extractAmounts(text);
-  
-  // Find model and serial
-  const modelEntry = serials.find(s => s.type === 'model');
-  const serialEntry = serials.find(s => s.type === 'serial' || s.type === 'imei');
-  
-  // Try to extract product name (look for common patterns)
-  let productName: string | null = null;
-  const productPatterns = [
-    /(?:product|item|description)\s*[:.]?\s*([^\n]+)/i,
-    /(?:name)\s*[:.]?\s*([^\n]+)/i,
-  ];
-  
-  for (const pattern of productPatterns) {
-    const match = text.match(pattern);
-    if (match) {
-      productName = match[1].trim();
-      break;
-    }
-  }
-  
-  // Get total price (usually the largest amount)
-  const sortedAmounts = [...amounts].sort((a, b) => b.value - a.value);
-  const totalPrice = sortedAmounts[0]?.value || null;
-  
   return {
-    name: productName,
-    model: modelEntry?.value || null,
-    serialNumber: serialEntry?.value || null,
+    name: null,
+    model: null,
+    serialNumber: null,
     category: null,
     quantity: 1,
     unitPrice: null,
-    totalPrice,
+    totalPrice: null,
   };
 };
 
 /**
- * Extract date-related details
+ * Extract date-related details - enhanced to prioritize expiry and warranty dates
  */
 export const extractDateDetails = (text: string): DateDetails => {
   const textLower = text.toLowerCase();
@@ -325,37 +321,150 @@ export const extractDateDetails = (text: string): DateDetails => {
   let nextServiceDue: string | null = null;
   let invoiceDate: string | null = null;
   
-  // Try to associate dates with their context
+  // Parse dates with context - enhanced date extraction
   const lines = text.split('\n');
+  const dateContexts: Array<{
+    date: string;
+    keywords: string[];
+    priority: number;
+    context: string;
+  }> = [];
   
-  lines.forEach(line => {
+  lines.forEach((line, lineIndex) => {
     const lineLower = line.toLowerCase();
     const dates = extractDates(line);
     
     if (dates.length > 0) {
       const date = dates[0];
+      let priority = 0;
+      const keywords: string[] = [];
       
-      if (lineLower.includes('purchase') || lineLower.includes('bought')) {
-        purchaseDate = date;
-      } else if (lineLower.includes('warranty') && (lineLower.includes('expir') || lineLower.includes('until') || lineLower.includes('valid'))) {
+      // Warranty/Expiry keywords (HIGHEST PRIORITY)
+      if (lineLower.includes('warranty') || lineLower.includes('expir') || 
+          lineLower.includes('valid until') || lineLower.includes('expire')) {
+        priority = 100;
+        keywords.push('warranty', 'expiry');
         warrantyExpiry = date;
-      } else if (lineLower.includes('next service') || lineLower.includes('service due')) {
+      }
+      
+      // Extended warranty keywords
+      if (lineLower.includes('extended') && lineLower.includes('warranty')) {
+        priority = 90;
+        keywords.push('extended warranty');
+        if (!warrantyExpiry) warrantyExpiry = date;
+      }
+      
+      // Next service due keywords (HIGH PRIORITY)
+      if (lineLower.includes('next service') || lineLower.includes('service due') ||
+          lineLower.includes('service scheduled') || lineLower.includes('annual service')) {
+        priority = 85;
+        keywords.push('next service', 'service due');
         nextServiceDue = date;
-      } else if (lineLower.includes('invoice date') || lineLower.includes('date of invoice')) {
+      }
+      
+      // Renewal keywords
+      if (lineLower.includes('renew') || lineLower.includes('renewal') || 
+          lineLower.includes('subscription')) {
+        priority = 80;
+        keywords.push('renewal');
+        if (!warrantyExpiry) warrantyExpiry = date;
+      }
+      
+      // Payment/Bill due keywords
+      if (lineLower.includes('due date') || lineLower.includes('payment due') ||
+          lineLower.includes('bill due')) {
+        priority = 75;
+        keywords.push('payment due');
+      }
+      
+      // Purchase keywords (MEDIUM PRIORITY)
+      if (lineLower.includes('purchase') || lineLower.includes('bought') ||
+          lineLower.includes('date of purchase')) {
+        priority = 50;
+        keywords.push('purchase');
+        purchaseDate = date;
+      }
+      
+      // Invoice date keywords (MEDIUM PRIORITY)
+      if (lineLower.includes('invoice date') || lineLower.includes('date of invoice') ||
+          lineLower.includes('date of issue')) {
+        priority = 45;
+        keywords.push('invoice date');
         invoiceDate = date;
+      }
+      
+      if (priority > 0) {
+        dateContexts.push({
+          date,
+          keywords,
+          priority,
+          context: line.substring(0, 100),
+        });
       }
     }
     
     // Look for service interval patterns
-    const intervalMatch = line.match(/(\d+)\s*(month|year|km|mile)/i);
+    const intervalMatch = line.match(/(\d+)\s*(month|year|km|mile)s?/i);
     if (intervalMatch && SERVICE_KEYWORDS.some(kw => lineLower.includes(kw))) {
       serviceInterval = `${intervalMatch[1]} ${intervalMatch[2]}`;
     }
   });
   
-  // If no specific purchase date found, use invoice date or first date
-  if (!purchaseDate) {
-    purchaseDate = invoiceDate || allDates[0] || null;
+  // If no specific warranty expiry found, look for the earliest future date
+  // that's in a warranty context
+  if (!warrantyExpiry && dateContexts.length > 0) {
+    const warrantyContextDates = dateContexts
+      .filter(dc => dc.keywords.some(k => k.includes('warranty') || k.includes('expir') || k.includes('valid')))
+      .sort((a, b) => b.priority - a.priority);
+    
+    if (warrantyContextDates.length > 0) {
+      warrantyExpiry = warrantyContextDates[0].date;
+    }
+  }
+  
+  // If no next service found, look for service-related dates
+  if (!nextServiceDue && dateContexts.length > 0) {
+    const serviceDates = dateContexts
+      .filter(dc => dc.keywords.some(k => k.includes('service')))
+      .sort((a, b) => b.priority - a.priority);
+    
+    if (serviceDates.length > 0) {
+      nextServiceDue = serviceDates[0].date;
+    }
+  }
+  
+  // If no dates found yet, use the most recent future date
+  if (!warrantyExpiry && !nextServiceDue && allDates.length > 0) {
+    // Find dates that are in the future
+    const now = new Date();
+    const futureDate = allDates.find(dateStr => {
+      try {
+        const date = new Date(dateStr);
+        return date > now;
+      } catch {
+        return false;
+      }
+    });
+    
+    if (futureDate) {
+      warrantyExpiry = futureDate;
+    } else if (allDates.length > 0) {
+      // Use the last date if no future date exists
+      warrantyExpiry = allDates[allDates.length - 1];
+    }
+  }
+  
+  // If no purchase date and we have warranty expiry, calculate approximate purchase date
+  // (typically warranty is 1-2 years from purchase)
+  if (!purchaseDate && warrantyExpiry) {
+    try {
+      const warrantyDate = new Date(warrantyExpiry);
+      const estimatedPurchaseDate = new Date(warrantyDate);
+      estimatedPurchaseDate.setFullYear(estimatedPurchaseDate.getFullYear() - 1);
+      purchaseDate = estimatedPurchaseDate.toISOString().split('T')[0];
+    } catch {
+      // Ignore parsing errors
+    }
   }
   
   return {
@@ -368,47 +477,64 @@ export const extractDateDetails = (text: string): DateDetails => {
 };
 
 /**
- * Generate reminder suggestions based on extracted data
+ * Generate reminder suggestions based on extracted data - Enhanced
  */
 export const generateReminderSuggestions = (
   dates: DateDetails,
   documentType: DocumentType
 ): Array<{
-  type: 'warranty_expiry' | 'service_due' | 'payment_due';
+  type: 'warranty_expiry' | 'service_due' | 'payment_due' | 'custom';
   date: string;
+  title: string;
   description: string;
   priority: 'low' | 'medium' | 'high';
 }> => {
   const reminders: Array<{
-    type: 'warranty_expiry' | 'service_due' | 'payment_due';
+    type: 'warranty_expiry' | 'service_due' | 'payment_due' | 'custom';
     date: string;
+    title: string;
     description: string;
     priority: 'low' | 'medium' | 'high';
   }> = [];
   
   if (dates.warrantyExpiry) {
+    const warrantyDate = new Date(dates.warrantyExpiry);
+    const today = new Date();
+    const daysUntilExpiry = Math.ceil((warrantyDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    
     reminders.push({
       type: 'warranty_expiry',
       date: dates.warrantyExpiry,
-      description: 'Warranty is about to expire. Consider extending warranty or making claims.',
-      priority: 'high',
+      title: 'Warranty Expiring Soon',
+      description: `Your warranty expires on ${warrantyDate.toLocaleDateString()}. ${daysUntilExpiry > 0 ? 'Consider extending warranty or making claims.' : 'This warranty has already expired!'}`,
+      priority: daysUntilExpiry <= 30 ? 'high' : daysUntilExpiry <= 90 ? 'medium' : 'low',
     });
   }
   
   if (dates.nextServiceDue) {
+    const serviceDate = new Date(dates.nextServiceDue);
+    const today = new Date();
+    const daysUntilService = Math.ceil((serviceDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    
     reminders.push({
       type: 'service_due',
       date: dates.nextServiceDue,
-      description: 'Scheduled service is due. Book an appointment.',
-      priority: 'medium',
+      title: 'Service Scheduled',
+      description: `Your scheduled service is due on ${serviceDate.toLocaleDateString()}. ${dates.serviceInterval ? `(Service interval: ${dates.serviceInterval})` : ''} Book an appointment now.`,
+      priority: daysUntilService <= 14 ? 'high' : daysUntilService <= 30 ? 'medium' : 'low',
     });
   }
   
   if (documentType === 'bill' && dates.invoiceDate) {
+    const invoiceDate = new Date(dates.invoiceDate);
+    const dueDate = new Date(invoiceDate);
+    dueDate.setDate(dueDate.getDate() + 30); // Assuming 30 days payment term
+    
     reminders.push({
       type: 'payment_due',
-      date: dates.invoiceDate,
-      description: 'Bill payment is due.',
+      date: dueDate.toISOString().split('T')[0],
+      title: 'Bill Payment Due',
+      description: `Payment due on ${dueDate.toLocaleDateString()}. Ensure timely payment to avoid penalties.`,
       priority: 'high',
     });
   }

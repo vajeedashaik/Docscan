@@ -30,11 +30,11 @@ export const Navbar: React.FC = () => {
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <header className="border-b border-border/40 bg-card/50 backdrop-blur-xl sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4">
-        <div className="flex items-center justify-between h-16">
+    <header className="border-b border-border/40 bg-card/50 backdrop-blur-md sticky top-0 z-50 shadow-sm">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16 gap-4">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 flex-shrink-0">
+          <Link to="/" className="flex items-center gap-2 flex-shrink-0 hover:opacity-80 transition-opacity">
             <div className="relative">
               <img 
                 src={logoSrc} 
@@ -51,10 +51,10 @@ export const Navbar: React.FC = () => {
                 key={link.href}
                 to={link.href}
                 className={cn(
-                  'px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200',
+                  'px-4 py-2 rounded-lg text-sm font-semibold transition-smooth',
                   isActive(link.href)
                     ? 'bg-primary/20 text-primary border border-primary/30'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-card/50'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/10'
                 )}
               >
                 {link.label}
@@ -63,13 +63,13 @@ export const Navbar: React.FC = () => {
           </nav>
 
           {/* Right Actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 ml-auto">
             {/* Theme Toggle */}
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              className="h-9 w-9"
+              title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
             >
               {theme === 'dark' ? (
                 <Sun className="h-4 w-4" />
@@ -92,7 +92,7 @@ export const Navbar: React.FC = () => {
                   appearance={{ 
                     baseTheme: theme === 'dark' ? dark : light,
                     elements: {
-                      userButtonBox: "transition-all",
+                      userButtonBox: "transition-smooth",
                       userButtonTrigger: "focus:shadow-none"
                     }
                   }} 
@@ -104,8 +104,8 @@ export const Navbar: React.FC = () => {
             {/* Mobile Menu Button */}
             <Button
               variant="ghost"
-              size="icon"
-              className="md:hidden h-9 w-9"
+              size="icon-sm"
+              className="md:hidden"
               onClick={() => setMobileOpen(!mobileOpen)}
             >
               {mobileOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
@@ -115,17 +115,17 @@ export const Navbar: React.FC = () => {
 
         {/* Mobile Navigation */}
         {mobileOpen && (
-          <nav className="md:hidden border-t border-border/40 py-4 space-y-2">
+          <nav className="md:hidden border-t border-border/40 py-4 space-y-2 animate-slide-down">
             {navLinks.map(link => (
               <Link
                 key={link.href}
                 to={link.href}
                 onClick={() => setMobileOpen(false)}
                 className={cn(
-                  'block px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200',
+                  'block px-4 py-2 rounded-lg text-sm font-semibold transition-smooth',
                   isActive(link.href)
                     ? 'bg-primary/20 text-primary border border-primary/30'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-card/50'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/10'
                 )}
               >
                 {link.label}
@@ -144,7 +144,7 @@ export const Navbar: React.FC = () => {
                   appearance={{ 
                     baseTheme: theme === 'dark' ? dark : light,
                     elements: {
-                      userButtonBox: "transition-all",
+                      userButtonBox: "transition-smooth",
                       userButtonTrigger: "focus:shadow-none"
                     }
                   }}

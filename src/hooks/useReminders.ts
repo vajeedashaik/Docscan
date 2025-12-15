@@ -3,6 +3,50 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
+// Helper function to parse dates in multiple formats
+function parseDate(dateString: string | null | undefined): string | null {
+  if (!dateString) return null;
+  
+  try {
+    // Try ISO format first (YYYY-MM-DD)
+    let date = new Date(dateString);
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().split('T')[0];
+    }
+    
+    // Try European format (DD.MM.YYYY or DD/MM/YYYY)
+    const europeanMatch = dateString.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})$/);
+    if (europeanMatch) {
+      const [, day, month, year] = europeanMatch;
+      date = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString().split('T')[0];
+      }
+    }
+    
+    // Try US format (MM/DD/YYYY or MM-DD-YYYY)
+    const usMatch = dateString.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})$/);
+    if (usMatch) {
+      const [, month, day, year] = usMatch;
+      date = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString().split('T')[0];
+      }
+    }
+    
+    // Try parsing as-is one more time
+    date = new Date(dateString);
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().split('T')[0];
+    }
+    
+    return null;
+  } catch (error) {
+    console.warn('Error parsing date:', dateString, error);
+    return null;
+  }
+}
+
 export interface Reminder {
   id: string;
   user_id: string;
@@ -140,15 +184,19 @@ export function useReminders(): UseRemindersReturn {
     
     const remindersToCreate = suggestedReminders
       .filter(r => r.date && r.title)
-      .map(r => ({
-        user_id: user.id,
-        ocr_result_id: ocrResultId,
-        title: r.title,
-        description: r.description,
-        reminder_type: validTypes.includes(r.type) ? r.type : 'custom',
-        reminder_date: r.date,
-        notify_before_days: r.priority === 'high' ? 14 : r.priority === 'medium' ? 7 : 3,
-      }));
+      .map(r => {
+        const parsedDate = parseDate(r.date);
+        return {
+          user_id: user.id,
+          ocr_result_id: ocrResultId,
+          title: r.title,
+          description: r.description,
+          reminder_type: validTypes.includes(r.type) ? r.type : 'custom',
+          reminder_date: parsedDate,
+          notify_before_days: r.priority === 'high' ? 14 : r.priority === 'medium' ? 7 : 3,
+        };
+      })
+      .filter(r => r.reminder_date !== null); // Only include reminders with valid dates
 
     if (remindersToCreate.length === 0) return;
 
@@ -178,7 +226,47 @@ export function useReminders(): UseRemindersReturn {
   // Fetch reminders on mount and when user changes
   useEffect(() => {
     fetchReminders();
-  }, [fetchReminders]);
+
+    if (!user) return;
+
+    // Set up real-time subscription for reminders
+    const channel = supabase
+      .channel(`reminders:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'reminders',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            const newReminder = payload.new as Reminder;
+            if (!newReminder.is_dismissed) {
+              setReminders((prev) => [newReminder, ...prev]);
+              toast.success(`New reminder: ${newReminder.title}`);
+            }
+          } else if (payload.eventType === 'UPDATE') {
+            const updatedReminder = payload.new as Reminder;
+            setReminders((prev) =>
+              prev.map((r) =>
+                r.id === updatedReminder.id ? updatedReminder : r
+              ).filter(r => !r.is_dismissed || r.id !== updatedReminder.id)
+            );
+          } else if (payload.eventType === 'DELETE') {
+            setReminders((prev) =>
+              prev.filter((r) => r.id !== (payload.old as Reminder).id)
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [fetchReminders, user]);
 
   // Check for notifications on load
   useEffect(() => {

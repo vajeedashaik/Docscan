@@ -41,11 +41,13 @@ export function useDocumentMetadata(): UseDocumentMetadataReturn {
 
   const fetchDocuments = useCallback(async () => {
     if (!userId) {
+      console.log('fetchDocuments: userId is not available, skipping fetch');
       setDocuments([]);
       setIsLoading(false);
       return;
     }
 
+    console.log('fetchDocuments: Fetching documents for userId:', userId);
     setIsLoading(true);
     setError(null);
 
@@ -65,6 +67,7 @@ export function useDocumentMetadata(): UseDocumentMetadataReturn {
           throw fetchError;
         }
       } else {
+        console.log('fetchDocuments: Found', (data || []).length, 'documents');
         setDocuments((data as DocumentMetadata[]) || []);
       }
     } catch (err) {
@@ -133,6 +136,8 @@ export function useDocumentMetadata(): UseDocumentMetadataReturn {
 
     if (!userId) return;
 
+    console.log('Setting up real-time subscription for document_metadata, userId:', userId);
+
     const channel = supabase
       .channel(`document_metadata:${userId}`)
       .on(
@@ -144,8 +149,16 @@ export function useDocumentMetadata(): UseDocumentMetadataReturn {
           filter: `user_id=eq.${userId}`,
         },
         (payload) => {
+          console.log('Real-time event received:', payload.eventType, payload);
           if (payload.eventType === 'INSERT') {
-            setDocuments((prev) => [payload.new as DocumentMetadata, ...prev]);
+            const newDoc = payload.new as DocumentMetadata;
+            setDocuments((prev) => {
+              // Avoid duplicates
+              if (prev.some(doc => doc.id === newDoc.id)) {
+                return prev;
+              }
+              return [newDoc, ...prev];
+            });
           } else if (payload.eventType === 'UPDATE') {
             setDocuments((prev) =>
               prev.map((doc) =>
@@ -161,10 +174,16 @@ export function useDocumentMetadata(): UseDocumentMetadataReturn {
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Real-time subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('Successfully subscribed to document_metadata changes');
+        }
+      });
 
     return () => {
-      channel.unsubscribe();
+      console.log('Unsubscribing from document_metadata channel');
+      supabase.removeChannel(channel);
     };
   }, [userId, fetchDocuments]);
 

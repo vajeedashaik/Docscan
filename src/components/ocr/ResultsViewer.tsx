@@ -47,59 +47,61 @@ export const ResultsViewer: React.FC<ResultsViewerProps> = ({ result, onExportJS
   const fields = result.extractedFields;
 
   return (
-    <Card className="border-border/50 overflow-hidden">
+    <Card className="border-border overflow-hidden shadow-md hover:shadow-lg transition-shadow">
       {/* Header - Always visible */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full p-4 flex items-center justify-between text-left hover:bg-accent/50 transition-colors"
+        className="w-full p-5 flex items-center justify-between text-left hover:bg-accent/30 transition-colors duration-200"
       >
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-            <FileText className="h-5 w-5 text-primary" />
+        <div className="flex items-center gap-4 min-w-0">
+          <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center flex-shrink-0 border border-primary/20">
+            <FileText className="h-6 w-6 text-primary" />
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant="secondary" className="text-xs capitalize">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <Badge variant="secondary" className="text-xs capitalize font-semibold">
                 {result.documentType?.replace(/_/g, ' ') || 'Document'}
               </Badge>
-              <span className={cn('text-xs font-medium', confidenceColor(result.confidence))}>
+              <span className={cn('text-xs font-bold', confidenceColor(result.confidence))}>
                 {Math.round(result.confidence * 100)}%
               </span>
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5 truncate">
+            <p className="text-xs text-muted-foreground truncate">
               {result.metadata.fileName}
             </p>
           </div>
         </div>
-        {isExpanded ? <ChevronUp className="h-4 w-4 flex-shrink-0" /> : <ChevronDown className="h-4 w-4 flex-shrink-0" />}
+        {isExpanded ? <ChevronUp className="h-5 w-5 flex-shrink-0 text-primary" /> : <ChevronDown className="h-5 w-5 flex-shrink-0 text-muted-foreground" />}
       </button>
 
       {/* Expanded Content */}
       {isExpanded && (
-        <CardContent className="p-4 pt-0 space-y-4">
+        <CardContent className="p-6 pt-0 space-y-6 border-t border-border/30">
           {/* Vendor */}
           {fields?.vendor && Object.values(fields.vendor).some(v => v) && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                <Store className="h-3.5 w-3.5" />
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-xs font-bold text-foreground uppercase tracking-wide">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <Store className="h-4 w-4 text-primary" />
+                </div>
                 Vendor
               </div>
-              <div className="space-y-1.5 text-sm">
+              <div className="space-y-2 ml-8 text-sm">
                 {fields.vendor.name && (
                   <div className="flex justify-between gap-2">
-                    <span className="text-muted-foreground">Name</span>
-                    <span className="font-medium text-right truncate max-w-[60%]">{fields.vendor.name}</span>
+                    <span className="text-muted-foreground font-medium">Name</span>
+                    <span className="font-semibold text-right truncate max-w-[60%]">{fields.vendor.name}</span>
                   </div>
                 )}
                 {fields.vendor.phone && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Phone</span>
-                    <span className="font-medium">{fields.vendor.phone}</span>
+                    <span className="text-muted-foreground font-medium">Phone</span>
+                    <span className="font-mono text-xs">{fields.vendor.phone}</span>
                   </div>
                 )}
                 {fields.vendor.gstin && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">GSTIN</span>
+                    <span className="text-muted-foreground font-medium">GSTIN</span>
                     <span className="font-mono text-xs">{fields.vendor.gstin}</span>
                   </div>
                 )}
@@ -109,34 +111,36 @@ export const ResultsViewer: React.FC<ResultsViewerProps> = ({ result, onExportJS
 
           {/* Product */}
           {fields?.product && Object.values(fields.product).some(v => v) && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                <Package className="h-3.5 w-3.5" />
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-xs font-bold text-foreground uppercase tracking-wide">
+                <div className="p-2 rounded-lg bg-accent/10">
+                  <Package className="h-4 w-4 text-accent" />
+                </div>
                 Product
               </div>
-              <div className="space-y-1.5 text-sm">
+              <div className="space-y-2 ml-8 text-sm">
                 {fields.product.name && (
                   <div className="flex justify-between gap-2">
-                    <span className="text-muted-foreground">Name</span>
-                    <span className="font-medium text-right truncate max-w-[60%]">{fields.product.name}</span>
+                    <span className="text-muted-foreground font-medium">Name</span>
+                    <span className="font-semibold text-right truncate max-w-[60%]">{fields.product.name}</span>
                   </div>
                 )}
                 {fields.product.model && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Model</span>
+                    <span className="text-muted-foreground font-medium">Model</span>
                     <span className="font-mono text-xs">{fields.product.model}</span>
                   </div>
                 )}
                 {fields.product.serialNumber && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Serial</span>
+                    <span className="text-muted-foreground font-medium">Serial</span>
                     <span className="font-mono text-xs">{fields.product.serialNumber}</span>
                   </div>
                 )}
                 {fields.product.totalPrice && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Price</span>
-                    <span className="font-medium">
+                    <span className="text-muted-foreground font-medium">Price</span>
+                    <span className="font-semibold">
                       {fields.amount?.currency || '₹'}{fields.product.totalPrice}
                     </span>
                   </div>
@@ -147,28 +151,30 @@ export const ResultsViewer: React.FC<ResultsViewerProps> = ({ result, onExportJS
 
           {/* Dates */}
           {fields?.dates && Object.values(fields.dates).some(v => v) && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                <Calendar className="h-3.5 w-3.5" />
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-xs font-bold text-foreground uppercase tracking-wide">
+                <div className="p-2 rounded-lg bg-warning/10">
+                  <Calendar className="h-4 w-4 text-warning" />
+                </div>
                 Important Dates
               </div>
-              <div className="space-y-1.5 text-sm">
+              <div className="space-y-2 ml-8 text-sm">
                 {fields.dates.purchaseDate && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Purchase</span>
-                    <span className="font-medium">{fields.dates.purchaseDate}</span>
+                    <span className="text-muted-foreground font-medium">Purchase</span>
+                    <span className="font-semibold">{fields.dates.purchaseDate}</span>
                   </div>
                 )}
                 {fields.dates.warrantyExpiry && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Warranty</span>
-                    <span className="font-medium text-warning">{fields.dates.warrantyExpiry}</span>
+                  <div className="flex justify-between p-2.5 rounded-lg bg-warning/10 border border-warning/20">
+                    <span className="text-muted-foreground font-medium">Warranty</span>
+                    <span className="font-bold text-warning">{fields.dates.warrantyExpiry}</span>
                   </div>
                 )}
                 {fields.dates.nextServiceDue && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Service Due</span>
-                    <span className="font-medium">{fields.dates.nextServiceDue}</span>
+                  <div className="flex justify-between p-2.5 rounded-lg bg-primary/10 border border-primary/20">
+                    <span className="text-muted-foreground font-medium">Service Due</span>
+                    <span className="font-bold text-primary">{fields.dates.nextServiceDue}</span>
                   </div>
                 )}
               </div>
@@ -177,26 +183,28 @@ export const ResultsViewer: React.FC<ResultsViewerProps> = ({ result, onExportJS
 
           {/* Reminders */}
           {result.reminderData?.suggestedReminders && result.reminderData.suggestedReminders.length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                <Bell className="h-3.5 w-3.5" />
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-xs font-bold text-foreground uppercase tracking-wide">
+                <div className="p-2 rounded-lg bg-destructive/10">
+                  <Bell className="h-4 w-4 text-destructive" />
+                </div>
                 Reminders
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 ml-8">
                 {result.reminderData.suggestedReminders.map((reminder, idx) => (
                   <div 
                     key={idx} 
-                    className="flex items-center justify-between p-2.5 rounded-lg bg-primary/5 text-sm"
+                    className="flex items-center justify-between p-3 rounded-lg bg-primary/10 border border-primary/20 text-sm hover:bg-primary/15 transition-colors"
                   >
                     <div className="min-w-0">
-                      <p className="font-medium text-foreground capitalize truncate">
+                      <p className="font-semibold text-foreground capitalize truncate">
                         {reminder.type.replace(/_/g, ' ')}
                       </p>
-                      <p className="text-xs text-muted-foreground">{reminder.date}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{reminder.date}</p>
                     </div>
                     <Badge 
                       variant={reminder.priority === 'high' ? 'destructive' : 'secondary'}
-                      className="text-xs flex-shrink-0"
+                      className="text-xs flex-shrink-0 ml-2 font-bold"
                     >
                       {reminder.priority}
                     </Badge>
@@ -208,10 +216,10 @@ export const ResultsViewer: React.FC<ResultsViewerProps> = ({ result, onExportJS
 
           {/* Raw Text Preview */}
           {result.rawText && (
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">Raw Text</p>
-              <ScrollArea className="h-[120px]">
-                <div className="bg-muted/50 rounded-lg p-3 text-xs font-mono whitespace-pre-wrap">
+            <div className="space-y-3">
+              <p className="text-xs font-bold text-foreground uppercase tracking-wide">Raw Text</p>
+              <ScrollArea className="h-[150px]">
+                <div className="bg-muted/40 rounded-lg p-4 text-xs font-mono whitespace-pre-wrap border border-border/50">
                   {result.rawText}
                 </div>
               </ScrollArea>
@@ -219,20 +227,21 @@ export const ResultsViewer: React.FC<ResultsViewerProps> = ({ result, onExportJS
           )}
 
           {/* Actions */}
-          <div className="flex gap-2 pt-2">
+          <div className="flex gap-2 pt-3 border-t border-border/30">
             <Button
               variant="outline"
               size="sm"
-              className="flex-1"
+              className="flex-1 font-semibold transition-smooth hover:bg-primary/10"
               onClick={copyToClipboard}
             >
-              {copied ? <Check className="h-3.5 w-3.5 mr-1.5" /> : <Copy className="h-3.5 w-3.5 mr-1.5" />}
+              {copied ? <Check className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
               {copied ? 'Copied' : 'Copy JSON'}
             </Button>
             {onExportJSON && (
               <Button
                 variant="outline"
                 size="sm"
+                className="font-semibold transition-smooth hover:bg-accent/10"
                 onClick={onExportJSON}
               >
                 Export

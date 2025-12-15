@@ -1,9 +1,19 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { preprocessImage, analyzeImageQuality } from '@/lib/image-preprocessing';
 import { useAuth } from '@/contexts/AuthContext';
 import { useReminders } from '@/hooks/useReminders';
 import { useUserStatistics } from '@/hooks/useUserStatistics';
+import { 
+  extractDates, 
+  extractVendorDetails,
+  extractProductDetails,
+  extractDateDetails,
+  extractAmounts,
+  detectDocumentType,
+  generateReminderSuggestions,
+  extractDocumentTitle
+} from '@/lib/entity-extraction';
 import type { 
   UploadedFile, 
   OCRResult, 
@@ -12,12 +22,59 @@ import type {
 } from '@/types/ocr';
 import { toast } from '@/hooks/use-toast';
 
+// Helper function to parse dates in multiple formats
+function parseDate(dateString: string | null | undefined): string | null {
+  if (!dateString) return null;
+  
+  try {
+    // Try ISO format first (YYYY-MM-DD)
+    let date = new Date(dateString);
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().split('T')[0];
+    }
+    
+    // Try European format (DD.MM.YYYY or DD/MM/YYYY)
+    const europeanMatch = dateString.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})$/);
+    if (europeanMatch) {
+      const [, day, month, year] = europeanMatch;
+      date = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString().split('T')[0];
+      }
+    }
+    
+    // Try US format (MM/DD/YYYY or MM-DD-YYYY)
+    const usMatch = dateString.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})$/);
+    if (usMatch) {
+      const [, month, day, year] = usMatch;
+      date = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString().split('T')[0];
+      }
+    }
+    
+    // Try parsing as-is one more time
+    date = new Date(dateString);
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().split('T')[0];
+    }
+    
+    return null;
+  } catch (error) {
+    console.warn('Error parsing date:', dateString, error);
+    return null;
+  }
+}
+
 interface UseOCROptions {
   autoPreprocess?: boolean;
   enhanceContrast?: boolean;
   denoise?: boolean;
   extractReminders?: boolean;
   languages?: string[];
+  onScanComplete?: () => void | Promise<void>;
+  productName?: string;
+  category?: string;
 }
 
 interface UseOCRReturn {
@@ -39,6 +96,9 @@ export const useOCR = (options: UseOCROptions = {}): UseOCRReturn => {
     denoise = true,
     extractReminders = true,
     languages = ['en', 'hi'],
+    onScanComplete,
+    productName,
+    category,
   } = options;
 
   const { user, userId } = useAuth();
@@ -195,48 +255,43 @@ export const useOCR = (options: UseOCROptions = {}): UseOCRReturn => {
         throw new Error(`OCR failed: ${visionError instanceof Error ? visionError.message : String(visionError)}`);
       }
 
+      // Extract structured data from OCR text - Simplified to focus on title and dates
+      updateFileStatus(file.id, 'parsing', 75);
+      
+      const { type: detectedDocType, confidence: docTypeConfidence } = detectDocumentType(fullTextAnnotation);
+      const documentTitle = extractDocumentTitle(fullTextAnnotation, file.file.name);
+      const dateDetails = extractDateDetails(fullTextAnnotation);
+      const reminderSuggestions = generateReminderSuggestions(dateDetails, detectedDocType);
+      
+      // Keep minimal vendor/product extraction for backward compatibility with DB
+      const vendorDetails = extractVendorDetails(fullTextAnnotation);
+      const productDetails = extractProductDetails(fullTextAnnotation);
+      const amounts = extractAmounts(fullTextAnnotation);
+
+      const topicName = productName || documentTitle;
+      const categoryLabel = category || detectedDocType;
+
       // Create result from OCR
       const result: OCRResult = {
         id: crypto.randomUUID(),
-        documentType: 'invoice', // Default to invoice for now
+        documentType: detectedDocType,
         status: 'completed',
         confidence: confidence,
         extractedFields: {
-          vendor: {
-            name: null,
-            address: null,
-            phone: null,
-            email: null,
-            gstin: null,
-            pan: null,
-          },
-          product: {
-            name: null,
-            model: null,
-            serialNumber: null,
-            category: null,
-            quantity: null,
-            unitPrice: null,
-            totalPrice: null,
-          },
-          dates: {
-            purchaseDate: null,
-            warrantyExpiry: null,
-            serviceInterval: null,
-            nextServiceDue: null,
-            invoiceDate: null,
-          },
+          vendor: vendorDetails,
+          product: productDetails,
+          dates: dateDetails,
           amount: {
-            subtotal: null,
+            subtotal: amounts[0]?.value || null,
             tax: null,
-            total: null,
-            currency: 'INR',
+            total: amounts[amounts.length - 1]?.value || null,
+            currency: amounts[0]?.currency || 'INR',
           },
           custom: [],
         },
         rawText: fullTextAnnotation,
         reminderData: {
-          suggestedReminders: [],
+          suggestedReminders: reminderSuggestions,
         },
         metadata: {
           fileName: file.file.name,
@@ -256,7 +311,128 @@ export const useOCR = (options: UseOCROptions = {}): UseOCRReturn => {
       updateFileStatus(file.id, 'parsing', 80);
     
       const ocrResultId = result.id;
-    
+      const startTime = Date.now();
+
+      // Save to Supabase - Create OCR Job first
+      if (user && userId) {
+        console.log('Saving OCR result to Supabase. User:', user.id, 'UserId:', userId);
+        try {
+          // Create OCR job record with user_id
+          const { data: jobData, error: jobError } = await supabase
+            .from('ocr_jobs')
+            .insert({
+              file_name: file.file.name,
+              file_type: file.file.type,
+              file_size: file.file.size,
+              status: 'completed',
+              completed_at: new Date().toISOString(),
+              processing_time_ms: Date.now() - startTime,
+              user_id: userId, // Set user_id as TEXT to match Clerk
+            })
+            .select()
+            .single();
+
+          if (jobError) {
+            console.warn('Error creating OCR job:', jobError);
+          } else if (jobData) {
+            // Save OCR results to database
+            const resultsPayload: any = {
+              id: ocrResultId,
+              job_id: jobData.id,
+              document_type: detectedDocType,
+              raw_text: fullTextAnnotation,
+              confidence: confidence,
+              extracted_data: {
+                vendor: vendorDetails,
+                product: productDetails,
+                dates: dateDetails,
+                amounts: amounts,
+              },
+              vendor_details: vendorDetails,
+              product_details: productDetails,
+              date_details: dateDetails,
+              reminder_suggestions: reminderSuggestions,
+          metadata: {
+            fileName: file.file.name,
+            fileType: file.file.type,
+            fileSize: file.file.size,
+            processedAt: new Date().toISOString(),
+            ocrEngine: 'google-cloud-vision',
+            imageQuality: result.metadata.imageQuality,
+            topicName,
+            category: categoryLabel,
+          },
+              metadata: {
+                fileName: file.file.name,
+                fileType: file.file.type,
+                fileSize: file.file.size,
+                processedAt: new Date().toISOString(),
+                ocrEngine: 'google-cloud-vision',
+                imageQuality: result.metadata.imageQuality,
+                topicName,
+                category: categoryLabel,
+              },
+            };
+
+            const { error: resultsError } = await (supabase as any)
+              .from('ocr_results')
+              .insert([resultsPayload]);
+
+            if (resultsError) {
+              console.warn('Error saving OCR results:', resultsError);
+            } else {
+              console.log('OCR results saved successfully, now saving metadata...');
+              
+              // Create document metadata record - include topic name and category
+              let metadataSuccess = false;
+              try {
+                const metadataPayload = {
+                  ocr_result_id: ocrResultId,
+                  user_id: userId,
+                  vendor_name: topicName || vendorDetails.name || null, // Topic name for display
+                  vendor_phone: null, // Not needed
+                  vendor_email: null, // Not needed
+                  expiry_date: parseDate(dateDetails.warrantyExpiry || dateDetails.nextServiceDue), // Primary expiry/due date
+                  renewal_date: parseDate(dateDetails.nextServiceDue), // Secondary date if different
+                  amount: null, // Not needed
+                  currency: 'USD', // Default
+                  notes: categoryLabel || `Scanned document - ${detectedDocType}`,
+                  tags: categoryLabel ? [categoryLabel] : [],
+                };
+                
+                console.log('Inserting document metadata:', metadataPayload);
+                
+                const { data: metadataData, error: metadataError } = await (supabase as any)
+                  .from('document_metadata')
+                  .insert(metadataPayload)
+                  .select();
+
+                if (metadataError) {
+                  console.warn('Error creating document metadata:', metadataError);
+                } else {
+                  console.log('Document metadata created successfully', metadataData);
+                  metadataSuccess = true;
+                }
+              } catch (metadataError) {
+                console.warn('Error creating document metadata:', metadataError);
+              }
+            }
+          }
+        } catch (dbError) {
+          console.error('Error saving to database:', dbError);
+        }
+        
+        // Always call the completion callback to refetch documents after all database operations
+        if (onScanComplete) {
+          try {
+            await Promise.resolve(onScanComplete());
+            console.log('onScanComplete callback executed successfully');
+          } catch (callbackError) {
+            console.error('Error in onScanComplete callback:', callbackError);
+          }
+        }
+      }
+
       // Update user statistics
       if (user) {
         try {
@@ -275,11 +451,17 @@ export const useOCR = (options: UseOCROptions = {}): UseOCRReturn => {
         }
       }
       
-      // Auto-create reminders from OCR results
+      // Auto-create reminders from OCR results with document title
       if (user && result.reminderData?.suggestedReminders?.length > 0) {
+        // Enhance reminder titles with document title if available
+        const enhancedReminders = result.reminderData.suggestedReminders.map(reminder => ({
+          ...reminder,
+          title: documentTitle ? `${documentTitle} - ${reminder.title}` : reminder.title,
+        }));
+        
         await createRemindersFromOCR(
           ocrResultId,
-          result.reminderData.suggestedReminders
+          enhancedReminders
         );
       }
       
@@ -305,7 +487,7 @@ export const useOCR = (options: UseOCROptions = {}): UseOCRReturn => {
 
       return null;
     }
-  }, [autoPreprocess, enhanceContrast, denoise, languages, extractReminders, user, createRemindersFromOCR, updateStatistics]);
+  }, [autoPreprocess, enhanceContrast, denoise, languages, extractReminders, user, userId, createRemindersFromOCR, updateStatistics, onScanComplete]);
 
   const processFiles = useCallback(async () => {
     const pendingFiles = files.filter(f => f.status === 'pending');

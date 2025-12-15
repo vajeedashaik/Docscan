@@ -55,47 +55,54 @@ const PricingPage: React.FC = () => {
 
       <Navbar />
 
-      <main className="min-h-screen bg-gradient-to-br from-background via-background to-primary/10">
-        <div className="max-w-7xl mx-auto px-4 py-12">
+      <main className="min-h-screen bg-gradient-to-br from-background via-background to-primary/10 relative overflow-hidden">
+        {/* Animated background elements */}
+        <div className="fixed inset-0 pointer-events-none">
+          <div className="absolute top-20 left-10 w-72 h-72 bg-gradient-to-r from-primary/15 to-accent/15 rounded-full blur-3xl animate-blob opacity-60"></div>
+          <div className="absolute bottom-40 right-10 w-72 h-72 bg-gradient-to-r from-accent/15 to-primary/15 rounded-full blur-3xl animate-blob animation-delay-2000 opacity-60"></div>
+        </div>
+        
+        <div className="max-w-7xl mx-auto px-4 py-12 relative z-10">
           {/* Header */}
-          <div className="text-center mb-16 space-y-4">
-            <h1 className="text-4xl sm:text-5xl font-bold">
-              <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+          <div className="text-center mb-20 space-y-5">
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold">
+              <span className="bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
                 Simple, Transparent Pricing
               </span>
             </h1>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
               Choose the perfect plan for your needs. All plans include our core AI-powered OCR features.
             </p>
           </div>
 
-
-
           {/* Clerk Pricing Table */}
-          <div className="mb-16">
-            <div className="text-center mb-8">
-              <h2 className="text-2xl font-bold mb-2">Choose Your Plan</h2>
-              <p className="text-muted-foreground">
+          <div className="mb-20">
+            <div className="text-center mb-10">
+              <h2 className="text-3xl font-bold mb-3 text-foreground">Choose Your Plan</h2>
+              <p className="text-muted-foreground text-base">
                 Subscribe now and start your free trial
               </p>
             </div>
-            <div className="bg-card/50 backdrop-blur border border-border/50 rounded-lg p-8">
+            <div className="bg-card/60 backdrop-blur-sm border border-border rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow duration-300">
               <PricingTable appearance={{ baseTheme: theme === 'dark' ? dark : light }} />
             </div>
           </div>
 
           {/* Features Comparison */}
-          <div className="mb-16">
-            <h2 className="text-2xl font-bold mb-8 text-center">What's Included</h2>
+          <div className="mb-20">
+            <div className="text-center mb-10">
+              <h2 className="text-3xl font-bold text-foreground">What's Included</h2>
+              <p className="text-muted-foreground mt-2">Everything you need to manage your documents</p>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {features.map((feature, index) => (
-                <div key={index} className="flex items-start gap-3 p-4 rounded-lg bg-card/50 backdrop-blur border border-border/50">
-                  <div className="h-6 w-6 rounded-full bg-gradient-to-r from-primary to-accent flex items-center justify-center flex-shrink-0 mt-0.5">
+                <div key={index} className="flex items-start gap-4 p-5 rounded-xl bg-card/60 backdrop-blur border border-border hover:border-primary/40 hover:bg-card hover:shadow-md transition-all duration-300 group">
+                  <div className="h-6 w-6 rounded-full bg-gradient-to-br from-primary/80 to-accent/80 flex items-center justify-center flex-shrink-0 mt-0.5 group-hover:scale-110 transition-transform duration-300">
                     <Check className="h-4 w-4 text-white" />
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-sm">{feature.name}</h3>
-                    <p className="text-xs text-muted-foreground mt-1">{feature.description}</p>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-base text-foreground">{feature.name}</h3>
+                    <p className="text-sm text-muted-foreground mt-1.5">{feature.description}</p>
                   </div>
                 </div>
               ))}
@@ -103,14 +110,17 @@ const PricingPage: React.FC = () => {
           </div>
 
           {/* FAQ Section */}
-          <div className="text-center py-12 border-t border-border/40">
-            <h2 className="text-2xl font-bold mb-4">Have Questions?</h2>
-            <p className="text-muted-foreground mb-6 max-w-2xl mx-auto">
-              Check out our documentation or contact our support team. We're here to help!
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button variant="outline">View Docs</Button>
-              <Button className="bg-gradient-to-r from-primary to-accent">Contact Support</Button>
+          <div className="text-center py-16 border-t border-border/40 relative">
+            <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 to-accent/20 rounded-2xl blur opacity-0 group-hover:opacity-50 transition duration-500"></div>
+            <div className="relative space-y-6">
+              <h2 className="text-3xl font-bold text-foreground">Have Questions?</h2>
+              <p className="text-muted-foreground text-base max-w-2xl mx-auto leading-relaxed">
+                Check out our documentation or contact our support team. We're here to help!
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center pt-2">
+                <Button variant="outline" className="font-semibold transition-smooth hover:border-primary/50 hover:bg-primary/5">View Docs</Button>
+                <Button className="bg-gradient-to-r from-primary to-accent font-semibold transition-smooth hover:shadow-lg hover:shadow-primary/50">Contact Support</Button>
+              </div>
             </div>
           </div>
         </div>

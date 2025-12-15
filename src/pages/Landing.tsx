@@ -212,51 +212,57 @@ const Landing: React.FC = () => {
               </p>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-6">
+            <div className="grid md:grid-cols-3 gap-7">
               {/* Feature 1 */}
               <div className="group relative">
-                <div className="absolute -inset-1 bg-gradient-to-r from-primary/40 to-accent/40 rounded-lg blur opacity-0 group-hover:opacity-100 transition duration-500 group-hover:duration-200 animate-tilt"></div>
-                <div className="relative border border-border rounded-lg p-8 hover:border-primary/50 transition-all duration-300 hover:bg-card/80 hover:shadow-xl hover:shadow-primary/20 bg-card/50">
-                  <div className="space-y-4">
-                    <div className="h-16 w-16 bg-gradient-to-br from-primary/30 to-accent/30 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                <div className="absolute -inset-1 bg-gradient-to-r from-primary/40 to-accent/40 rounded-xl blur opacity-0 group-hover:opacity-100 transition duration-500 group-hover:duration-200 animate-tilt"></div>
+                <div className="relative border border-border rounded-xl p-8 hover:border-primary/50 transition-all duration-300 hover:bg-card hover:shadow-lg bg-card/50 backdrop-blur">
+                  <div className="space-y-5">
+                    <div className="h-16 w-16 bg-gradient-to-br from-primary/20 to-primary/5 rounded-lg flex items-center justify-center group-hover:scale-110 group-hover:bg-primary/25 transition-all duration-300 border border-primary/20">
                       <Scan className="h-8 w-8 text-primary group-hover:animate-spin-slow" />
                     </div>
-                    <h3 className="font-bold text-lg">Instant Scanning</h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      Upload and scan documents with advanced AI processing
-                    </p>
+                    <div>
+                      <h3 className="font-bold text-lg text-foreground">Instant Scanning</h3>
+                      <p className="text-sm text-muted-foreground leading-relaxed mt-2">
+                        Upload and scan documents with advanced AI processing
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
 
               {/* Feature 2 */}
               <div className="group relative">
-                <div className="absolute -inset-1 bg-gradient-to-r from-accent/40 to-primary/40 rounded-lg blur opacity-0 group-hover:opacity-100 transition duration-500 group-hover:duration-200 animate-tilt animation-delay-300"></div>
-                <div className="relative border border-border rounded-lg p-8 hover:border-accent/50 transition-all duration-300 hover:bg-card/80 hover:shadow-xl hover:shadow-accent/20 bg-card/50">
-                  <div className="space-y-4">
-                    <div className="h-16 w-16 bg-gradient-to-br from-accent/30 to-primary/30 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                <div className="absolute -inset-1 bg-gradient-to-r from-accent/40 to-primary/40 rounded-xl blur opacity-0 group-hover:opacity-100 transition duration-500 group-hover:duration-200 animate-tilt animation-delay-300"></div>
+                <div className="relative border border-border rounded-xl p-8 hover:border-accent/50 transition-all duration-300 hover:bg-card hover:shadow-lg bg-card/50 backdrop-blur">
+                  <div className="space-y-5">
+                    <div className="h-16 w-16 bg-gradient-to-br from-accent/20 to-accent/5 rounded-lg flex items-center justify-center group-hover:scale-110 group-hover:bg-accent/25 transition-all duration-300 border border-accent/20">
                       <Sparkles className="h-8 w-8 text-accent group-hover:animate-pulse" />
                     </div>
-                    <h3 className="font-bold text-lg">Smart Detection</h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      AI automatically finds and extracts important dates
-                    </p>
+                    <div>
+                      <h3 className="font-bold text-lg text-foreground">Smart Detection</h3>
+                      <p className="text-sm text-muted-foreground leading-relaxed mt-2">
+                        AI automatically finds and extracts important dates
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
 
               {/* Feature 3 */}
               <div className="group relative">
-                <div className="absolute -inset-1 bg-gradient-to-r from-primary/40 to-accent/40 rounded-lg blur opacity-0 group-hover:opacity-100 transition duration-500 group-hover:duration-200 animate-tilt animation-delay-600"></div>
-                <div className="relative border border-border rounded-lg p-8 hover:border-primary/50 transition-all duration-300 hover:bg-card/80 hover:shadow-xl hover:shadow-primary/20 bg-card/50">
-                  <div className="space-y-4">
-                    <div className="h-16 w-16 bg-gradient-to-br from-primary/30 to-accent/30 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                <div className="absolute -inset-1 bg-gradient-to-r from-primary/40 to-accent/40 rounded-xl blur opacity-0 group-hover:opacity-100 transition duration-500 group-hover:duration-200 animate-tilt animation-delay-600"></div>
+                <div className="relative border border-border rounded-xl p-8 hover:border-primary/50 transition-all duration-300 hover:bg-card hover:shadow-lg bg-card/50 backdrop-blur">
+                  <div className="space-y-5">
+                    <div className="h-16 w-16 bg-gradient-to-br from-primary/20 to-primary/5 rounded-lg flex items-center justify-center group-hover:scale-110 group-hover:bg-primary/25 transition-all duration-300 border border-primary/20">
                       <Bell className="h-8 w-8 text-primary group-hover:animate-bounce" />
                     </div>
-                    <h3 className="font-bold text-lg">Timely Alerts</h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      Never miss a deadline with intelligent reminders
-                    </p>
+                    <div>
+                      <h3 className="font-bold text-lg text-foreground">Timely Alerts</h3>
+                      <p className="text-sm text-muted-foreground leading-relaxed mt-2">
+                        Never miss a deadline with intelligent reminders
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>

@@ -19,7 +19,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Navbar } from '@/components/layout/Navbar';
 import { RemindersList } from '@/components/reminders/RemindersList';
+import { DocumentList } from '@/components/dashboard/DocumentList';
 import { useReminders } from '@/hooks/useReminders';
+import { useDocumentMetadata } from '@/hooks/useDocumentMetadata';
 import { useOCRStats } from '@/hooks/useOCRStats';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -28,6 +30,7 @@ const DashboardPage: React.FC = () => {
   const { user, isLoaded } = useUser();
   const { userId } = useAuth();
   const { upcomingReminders } = useReminders();
+  const { documents, isLoading: docsLoading, starDocument, deleteDocument } = useDocumentMetadata();
   const { totalDocuments, totalStorageUsedGB, recentScans, successfulScans, failedScans, fetchStats, isLoading } = useOCRStats();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'overview' | 'reminders' | 'settings'>('overview');
@@ -118,7 +121,7 @@ const DashboardPage: React.FC = () => {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-12">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
               <Card className="border-border/50 bg-card/50 backdrop-blur">
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
@@ -142,20 +145,6 @@ const DashboardPage: React.FC = () => {
                     </div>
                     <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-accent/30 to-primary/30 flex items-center justify-center">
                       <Bell className="h-5 w-5 text-accent" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border-border/50 bg-card/50 backdrop-blur">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Storage Used</p>
-                      <p className="text-2xl font-bold mt-1">{isLoading ? '-' : totalStorageUsedGB} GB</p>
-                    </div>
-                    <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-primary/30 to-accent/30 flex items-center justify-center">
-                      <BarChart3 className="h-5 w-5 text-primary" />
                     </div>
                   </div>
                 </CardContent>
@@ -222,56 +211,12 @@ const DashboardPage: React.FC = () => {
                   {/* Recent Documents */}
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div className="lg:col-span-2">
-                      <Card className="border-border/50 bg-card/50 backdrop-blur">
-                        <CardHeader>
-                          <CardTitle>Recent Scans</CardTitle>
-                          <CardDescription>Your latest document scans</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                          {isLoading ? (
-                            <div className="text-center py-8">
-                              <div className="inline-block h-8 w-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-2"></div>
-                              <p className="text-sm text-muted-foreground">Loading scans...</p>
-                            </div>
-                          ) : recentScans.length === 0 ? (
-                            <div className="text-center py-8">
-                              <ScanLine className="h-12 w-12 text-muted-foreground/30 mx-auto mb-2" />
-                              <p className="text-sm text-muted-foreground">No scans yet. Start by scanning a document.</p>
-                            </div>
-                          ) : (
-                            recentScans.map((scan) => {
-                              const date = new Date(scan.completed_at || scan.created_at);
-                              const isRecent = (Date.now() - date.getTime()) / (1000 * 60 * 60) < 24;
-                              const timeAgo = isRecent
-                                ? `${Math.round((Date.now() - date.getTime()) / (1000 * 60))} minutes ago`
-                                : date.toLocaleDateString();
-
-                              return (
-                                <div key={scan.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-card/50 transition-colors border border-border/20">
-                                  <div className="flex items-center gap-3 flex-1">
-                                    <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-primary/30 to-accent/30 flex items-center justify-center flex-shrink-0">
-                                      {scan.status === 'completed' ? (
-                                        <CheckCircle className="h-5 w-5 text-green-500" />
-                                      ) : scan.status === 'failed' ? (
-                                        <AlertCircle className="h-5 w-5 text-red-500" />
-                                      ) : (
-                                        <ScanLine className="h-5 w-5 text-primary" />
-                                      )}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <p className="font-medium text-sm truncate">{scan.file_name}</p>
-                                      <p className="text-xs text-muted-foreground">{timeAgo}</p>
-                                    </div>
-                                  </div>
-                                  <Button variant="ghost" size="sm" className="gap-2">
-                                    View <ArrowRight className="h-3 w-3" />
-                                  </Button>
-                                </div>
-                              );
-                            })
-                          )}
-                        </CardContent>
-                      </Card>
+                      <DocumentList
+                        documents={documents}
+                        isLoading={docsLoading}
+                        onStar={starDocument}
+                        onDelete={deleteDocument}
+                      />
                     </div>
 
                     {/* Quick Actions */}
@@ -284,10 +229,6 @@ const DashboardPage: React.FC = () => {
                           <Button onClick={() => navigate('/ocr')} className="w-full bg-gradient-to-r from-primary to-accent justify-start gap-2">
                             <ScanLine className="h-4 w-4" />
                             New Scan
-                          </Button>
-                          <Button variant="outline" className="w-full justify-start gap-2">
-                            <History className="h-4 w-4" />
-                            View History
                           </Button>
                           <Button onClick={() => setActiveTab('reminders')} variant="outline" className="w-full justify-start gap-2">
                             <Bell className="h-4 w-4" />
@@ -318,7 +259,7 @@ const DashboardPage: React.FC = () => {
                     <CardDescription>Manage and track all your important dates</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <RemindersList />
+                    <RemindersList showAll />
                   </CardContent>
                 </Card>
               )}

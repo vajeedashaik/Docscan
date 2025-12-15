@@ -118,9 +118,9 @@ export const FileUploadZone: React.FC<FileUploadZoneProps> = ({
 
   const getFileIcon = (type: string) => {
     if (type.startsWith('image/')) {
-      return <Image className="h-5 w-5 text-muted-foreground" />;
+      return <Image className="h-5 w-5 text-primary" />;
     }
-    return <FileText className="h-5 w-5 text-muted-foreground" />;
+    return <FileText className="h-5 w-5 text-primary" />;
   };
 
   const formatFileSize = (bytes: number) => {
@@ -130,15 +130,17 @@ export const FileUploadZone: React.FC<FileUploadZoneProps> = ({
   };
 
   return (
-    <div className="space-y-3">
-      {/* Drop Zone - Compact for mobile */}
+    <div className="space-y-4">
+      {/* Drop Zone */}
       <div
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         className={cn(
-          'relative rounded-xl border-2 border-dashed transition-all p-6',
-          isDragActive ? 'border-primary bg-primary/5' : 'border-border',
+          'relative rounded-lg border-2 border-dashed transition-smooth p-8 sm:p-10 text-center',
+          isDragActive 
+            ? 'border-primary bg-primary/10 shadow-glow' 
+            : 'border-border hover:border-primary/50 hover:bg-primary/5',
           disabled && 'opacity-50 cursor-not-allowed'
         )}
       >
@@ -164,14 +166,21 @@ export const FileUploadZone: React.FC<FileUploadZoneProps> = ({
 
         <label
           htmlFor="file-upload"
-          className={cn('block text-center', !disabled && 'cursor-pointer')}
+          className={cn('block', !disabled && 'cursor-pointer')}
         >
-          <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-3" />
-          <p className="text-sm font-medium text-foreground mb-1">
-            Tap to upload
+          <div className="flex justify-center mb-4">
+            <div className="p-3 rounded-lg bg-primary/15">
+              <Upload className="h-6 w-6 text-primary" />
+            </div>
+          </div>
+          <p className="text-lg font-bold text-foreground mb-2">
+            Upload Your Document
+          </p>
+          <p className="text-sm text-muted-foreground mb-1">
+            Drag and drop your file here, or click to browse
           </p>
           <p className="text-xs text-muted-foreground">
-            JPG, PNG, PDF • Max {maxFileSize}MB
+            JPG, PNG, PDF • Max {maxFileSize}MB each
           </p>
         </label>
       </div>
@@ -179,44 +188,45 @@ export const FileUploadZone: React.FC<FileUploadZoneProps> = ({
       {/* Camera Button */}
       <Button
         variant="outline"
-        className="w-full h-12"
+        className="w-full h-12 font-semibold"
         onClick={() => document.getElementById('camera-upload')?.click()}
         disabled={disabled}
       >
-        <Camera className="h-4 w-4 mr-2" />
+        <Camera className="h-5 w-5 mr-2" />
         Take Photo
       </Button>
 
       {/* Error Message */}
       {error && (
-        <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
-          <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-          <span>{error}</span>
+        <div className="flex items-start gap-3 p-4 rounded-lg bg-destructive/10 text-destructive text-sm border border-destructive/30 animate-slide-down">
+          <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+          <span className="font-medium">{error}</span>
         </div>
       )}
 
-      {/* Uploaded Files List - Compact */}
+      {/* Uploaded Files List */}
       {uploadedFiles.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-2.5">
+          <p className="text-sm font-semibold text-foreground">Uploaded Files ({uploadedFiles.length})</p>
           {uploadedFiles.map((file) => (
             <div
               key={file.id}
-              className="flex items-center gap-3 p-3 rounded-lg bg-card border border-border"
+              className="flex items-center gap-3 p-4 rounded-lg bg-card border border-border hover:shadow-md transition-smooth group"
             >
               {file.preview ? (
                 <img
                   src={file.preview}
                   alt={file.file.name}
-                  className="h-10 w-10 rounded object-cover flex-shrink-0"
+                  className="h-12 w-12 rounded-lg object-cover flex-shrink-0 border border-border"
                 />
               ) : (
-                <div className="h-10 w-10 rounded bg-muted flex items-center justify-center flex-shrink-0">
+                <div className="h-12 w-12 rounded-lg bg-primary/15 flex items-center justify-center flex-shrink-0">
                   {getFileIcon(file.file.type)}
                 </div>
               )}
 
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">
+                <p className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">
                   {file.file.name}
                 </p>
                 <p className="text-xs text-muted-foreground">
@@ -224,13 +234,14 @@ export const FileUploadZone: React.FC<FileUploadZoneProps> = ({
                 </p>
               </div>
 
-              <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="flex items-center gap-3 flex-shrink-0">
                 {file.status === 'pending' && (
                   <button
                     onClick={() => onRemoveFile(file.id)}
-                    className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                    className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-smooth"
+                    title="Remove file"
                   >
-                    <X className="h-4 w-4" />
+                    <X className="h-4.5 w-4.5" />
                   </button>
                 )}
 
@@ -239,11 +250,11 @@ export const FileUploadZone: React.FC<FileUploadZoneProps> = ({
                 )}
 
                 {file.status === 'completed' && (
-                  <span className="text-xs text-success font-medium">Done</span>
+                  <span className="text-xs font-bold text-success bg-success/15 px-2.5 py-1 rounded-full">Done</span>
                 )}
 
                 {file.status === 'failed' && (
-                  <span className="text-xs text-destructive font-medium">Failed</span>
+                  <span className="text-xs font-bold text-destructive bg-destructive/15 px-2.5 py-1 rounded-full">Failed</span>
                 )}
               </div>
             </div>

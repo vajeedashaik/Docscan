@@ -1,11 +1,11 @@
 import React from 'react';
-import { Trash2, Star, Calendar, DollarSign } from 'lucide-react';
+import { Trash2, Star, Calendar, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { DocumentMetadata } from '@/hooks/useDocumentMetadata';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, isPast, isToday } from 'date-fns';
 
 interface DocumentListProps {
   documents: DocumentMetadata[];
@@ -22,13 +22,13 @@ export const DocumentList: React.FC<DocumentListProps> = ({
 }) => {
   if (isLoading) {
     return (
-      <Card className="border-border/50">
+      <Card className="border-border">
         <CardHeader>
-          <CardTitle className="text-lg">Recent Documents</CardTitle>
+          <CardTitle className="text-2xl font-bold">Recent Documents</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-24 w-full" />
+            <Skeleton key={i} className="h-24 w-full rounded-lg" />
           ))}
         </CardContent>
       </Card>
@@ -37,78 +37,116 @@ export const DocumentList: React.FC<DocumentListProps> = ({
 
   if (documents.length === 0) {
     return (
-      <Card className="border-border/50">
+      <Card className="border-border">
         <CardHeader>
-          <CardTitle className="text-lg">Recent Documents</CardTitle>
+          <CardTitle className="text-2xl font-bold">Recent Documents</CardTitle>
         </CardHeader>
-        <CardContent className="text-center py-8">
-          <p className="text-muted-foreground">No documents scanned yet. Start by uploading a document!</p>
+        <CardContent className="text-center py-12">
+          <p className="text-lg text-muted-foreground font-medium">No documents scanned yet</p>
+          <p className="text-sm text-muted-foreground mt-1">Start by uploading a document!</p>
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <Card className="border-border/50">
+    <Card className="border-border">
       <CardHeader>
-        <CardTitle className="text-lg">Recent Documents ({documents.length})</CardTitle>
+        <CardTitle className="text-2xl font-bold">Recent Documents ({documents.length})</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3">
         {documents.slice(0, 5).map((doc) => (
           <div
             key={doc.id}
-            className="flex items-start justify-between gap-4 p-3 rounded-lg border border-border/50 hover:bg-accent/50 transition-colors"
+            className="flex items-start justify-between gap-4 p-4 rounded-lg border border-border hover:shadow-md hover:border-primary/30 transition-smooth group"
           >
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-2">
-                <h4 className="font-semibold text-sm truncate">
-                  {doc.vendor_name || `Document #${doc.document_number || 'N/A'}`}
-                </h4>
-                {doc.is_starred && (
-                  <Star className="h-4 w-4 fill-yellow-400 text-yellow-400 flex-shrink-0" />
-                )}
-              </div>
+              {(() => {
+                const topicName = doc.vendor_name || doc.notes || `Document #${doc.document_number || 'N/A'}`;
+                const categoryLabel = (doc.tags && doc.tags[0]) || doc.notes || 'Uncategorized';
+                const hasExpiry = !!doc.expiry_date;
+                const expiryDate = hasExpiry ? new Date(doc.expiry_date as string) : null;
+                const expired = expiryDate ? (isPast(expiryDate) && !isToday(expiryDate)) : false;
 
-              <div className="flex flex-wrap gap-2 mb-2">
-                {doc.expiry_date && (
-                  <Badge variant="outline" className="text-xs">
-                    <Calendar className="h-3 w-3 mr-1" />
-                    Expires: {new Date(doc.expiry_date).toLocaleDateString()}
-                  </Badge>
-                )}
-                {doc.amount && (
-                  <Badge variant="outline" className="text-xs">
-                    <DollarSign className="h-3 w-3 mr-1" />
-                    {doc.amount} {doc.currency}
-                  </Badge>
-                )}
-              </div>
+                return (
+                  <>
+                    <div className="flex items-center gap-2 mb-2.5">
+                      <h4 className="font-bold text-base text-foreground truncate group-hover:text-primary transition-colors">
+                        {topicName}
+                      </h4>
+                      {doc.is_starred && (
+                        <Star className="h-4 w-4 fill-yellow-400 text-yellow-400 flex-shrink-0 animate-pulse" />
+                      )}
+                    </div>
 
-              <p className="text-xs text-muted-foreground">
-                {formatDistanceToNow(new Date(doc.created_at), { addSuffix: true })}
-              </p>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      <Badge variant="outline" className="text-xs font-semibold">
+                        {categoryLabel}
+                      </Badge>
+                      {hasExpiry && (
+                        <Badge
+                          variant={expired ? 'destructive' : 'outline'}
+                          className="text-xs font-semibold flex items-center gap-1"
+                        >
+                          {expired ? (
+                            <>
+                              <AlertTriangle className="h-3 w-3" />
+                              Expired
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 className="h-3 w-3" />
+                              Active
+                            </>
+                          )}
+                        </Badge>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {hasExpiry && (
+                        <Badge variant="outline" className="text-xs font-semibold">
+                          <Calendar className="h-3 w-3 mr-1.5" />
+                          Expires: {expiryDate?.toLocaleDateString()}
+                        </Badge>
+                      )}
+                      {doc.renewal_date && doc.renewal_date !== doc.expiry_date && (
+                        <Badge variant="outline" className="text-xs font-semibold">
+                          <Calendar className="h-3 w-3 mr-1.5" />
+                          Renewal: {new Date(doc.renewal_date).toLocaleDateString()}
+                        </Badge>
+                      )}
+                    </div>
+
+                    <p className="text-xs text-muted-foreground">
+                      {formatDistanceToNow(new Date(doc.created_at), { addSuffix: true })}
+                    </p>
+                  </>
+                );
+              })()}
             </div>
 
             <div className="flex gap-2 flex-shrink-0">
               <Button
-                size="sm"
+                size="icon-sm"
                 variant="ghost"
                 onClick={() => onStar?.(doc.id, !doc.is_starred)}
-                className="h-8 w-8 p-0"
+                title={doc.is_starred ? 'Unstar document' : 'Star document'}
               >
                 <Star
-                  className={`h-4 w-4 ${
-                    doc.is_starred ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground'
+                  className={`h-4.5 w-4.5 ${
+                    doc.is_starred ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground hover:text-foreground'
                   }`}
                 />
               </Button>
               <Button
-                size="sm"
+                size="icon-sm"
                 variant="ghost"
                 onClick={() => onDelete?.(doc.id)}
-                className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                title="Delete document"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
               >
-                <Trash2 className="h-4 w-4" />
+                <Trash2 className="h-4.5 w-4.5" />
               </Button>
             </div>
           </div>

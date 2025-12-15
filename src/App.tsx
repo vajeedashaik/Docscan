@@ -6,7 +6,6 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { Header } from "@/components/layout/Header";
 import Landing from "./pages/Landing";
-import Dashboard from "./pages/Dashboard";
 import DashboardPage from "./pages/DashboardPage";
 import OCRPage from "./pages/OCRPage";
 import PricingPage from "./pages/PricingPage";
@@ -31,7 +30,6 @@ const App = () => {
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/pricing" element={<PricingPage />} />
               <Route element={<><Header /></>}>
-                <Route path="/old-dashboard" element={<Dashboard />} />
                 <Route path="/subscription" element={<Subscription />} />
               </Route>
               <Route path="/auth" element={<Auth />} />
