@@ -13,6 +13,8 @@ import Auth from "./pages/Auth";
 import Signup from "./pages/Signup";
 import Subscription from "./pages/Subscription";
 import NotFound from "./pages/NotFound";
+import Settings from "./pages/Settings";
+import GmailCallback from "./pages/GmailCallback";
 
 const queryClient = new QueryClient();
 
@@ -29,6 +31,8 @@ const App = () => {
               <Route path="/ocr" element={<OCRPage />} />
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/pricing" element={<PricingPage />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/auth/gmail-callback" element={<GmailCallback />} />
               <Route element={<><Header /></>}>
                 <Route path="/subscription" element={<Subscription />} />
               </Route>

@@ -75,6 +75,7 @@ interface UseOCROptions {
   onScanComplete?: () => void | Promise<void>;
   productName?: string;
   category?: string;
+  productCount?: string;
 }
 
 interface UseOCRReturn {

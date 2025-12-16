@@ -1,0 +1,22 @@
+# Supabase Cron Job Configuration for Email Bill Sync
+# This file enables periodic syncing of emails for bill extraction
+# 
+# To enable this cron job:
+# 1. Create a file: supabase/functions/sync-email-bills/config.toml
+# 2. Add this content
+# 3. Deploy with: supabase functions deploy sync-email-bills
+# 4. The sync will run automatically based on the schedule below
+
+# Run email sync every 6 hours
+crons = [
+  "0 */6 * * *"  # Every 6 hours (00:00, 06:00, 12:00, 18:00 UTC)
+]
+
+# Alternative schedules:
+# "0 */4 * * *"   # Every 4 hours
+# "0 * * * *"     # Every hour
+# "30 * * * *"    # Every hour at :30 minutes
+# "0 0 * * *"     # Daily at midnight UTC
+# "0 9,17 * * *"  # Twice a day: 9 AM and 5 PM UTC
+
+# Note: Times are in UTC. Adjust according to your timezone needs.
