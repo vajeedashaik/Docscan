@@ -1,7 +1,15 @@
 import { supabase } from '@/integrations/supabase/client';
 
 const GMAIL_API_URL = 'https://www.googleapis.com/gmail/v1';
-const GMAIL_OAUTH_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+const FUNCTIONS_BASE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
+// Request both Gmail access and permission to read the user's email address.
+// We include standard OpenID/userinfo scopes so the token works with the
+// https://www.googleapis.com/oauth2/v2/userinfo endpoint used in the Edge Function.
+const GMAIL_OAUTH_SCOPE = [
+  'openid',
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/gmail.readonly',
+].join(' ');
 
 export interface EmailImportSettings {
   id: string;
@@ -337,6 +345,24 @@ export const getImportedBills = async (userId: string, limit: number = 50): Prom
   } catch (error) {
     console.error('Error fetching imported bills:', error);
     return [];
+  }
+};
+
+// Manually trigger the sync-email-bills edge function
+export const triggerEmailSync = async (): Promise<void> => {
+  if (!import.meta.env.VITE_SUPABASE_URL) {
+    throw new Error('SUPABASE_URL is not configured');
+  }
+
+  const response = await fetch(`${FUNCTIONS_BASE_URL}/sync-email-bills`, {
+    method: 'POST',
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(
+      `Failed to trigger email sync: ${response.status} ${response.statusText} ${text}`,
+    );
   }
 };
 

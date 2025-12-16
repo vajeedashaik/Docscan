@@ -31,7 +31,7 @@ npm i
 # Step 4: Start the development server with auto-reloading and an instant preview.
 npm run dev
 
-do you have your debit card, when u go to atm, you click on sm transaction log or smthg, or idk there is sm option to see the receipt of all ur past transactions so far, you can see it there where ur money went
+
 **Edit a file directly in GitHub**
 
 - Navigate to the desired file(s).

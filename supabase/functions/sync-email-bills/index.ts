@@ -17,13 +17,279 @@ interface EmailImportSettings {
   sync_error: string | null;
 }
 
+// Helper to convert bytes to base64 string
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
 // Simple decryption (mirror of encryption in auth-gmail-token)
+// encryptToken stored `${token}|${key}` as base64, we only need the token part
 function decryptToken(encrypted: string): string {
   try {
-    return atob(encrypted);
+    const decoded = atob(encrypted);
+    const [token] = decoded.split("|");
+    if (!token) {
+      throw new Error("Decrypted token was empty or malformed");
+    }
+    return token;
   } catch (error) {
-    console.error("Error decrypting token:", error);
+    console.error(
+      `Error decrypting token - message=${(error as Error).message}`,
+    );
     throw new Error("Failed to decrypt token");
+  }
+}
+
+async function runOcrForImportedBill(
+  supabaseClient: ReturnType<typeof createClient>,
+  params: {
+    userId: string;
+    importedBillId: string;
+    subject: string;
+    fileUrl: string | null;
+    fileType: string | null;
+    accessToken: string;
+    googleVisionApiKey: string;
+  },
+): Promise<void> {
+  const { userId, importedBillId, subject, fileUrl, fileType, accessToken, googleVisionApiKey } =
+    params;
+
+  try {
+    if (!fileUrl) {
+      console.log(
+        `Skipping OCR for imported bill ${importedBillId} (no file URL)`,
+      );
+      return;
+    }
+
+    console.log(
+      `Running OCR for imported bill ${importedBillId} (type=${fileType}, url=${fileUrl})`,
+    );
+
+    // 1) Download the document as bytes
+    let bytes: Uint8Array | null = null;
+
+    if (fileType === "attachment" && fileUrl.startsWith("gmail://")) {
+      // gmail://messageId/partId
+      const match = fileUrl.match(/^gmail:\/\/([^/]+)\/(.+)$/);
+      if (!match) {
+        console.error(
+          `Invalid gmail attachment URL for bill ${importedBillId}: ${fileUrl}`,
+        );
+        return;
+      }
+      const [, messageId, partId] = match;
+
+      const attachmentRes = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${partId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+      );
+
+      if (!attachmentRes.ok) {
+        const body = await attachmentRes.text().catch(() => "");
+        console.error(
+          `Failed to download Gmail attachment for bill ${importedBillId} - status=${attachmentRes.status}, body=${body}`,
+        );
+        return;
+      }
+
+      const data = await attachmentRes.json();
+      // Gmail attachment data is base64url encoded
+      const base64Data = (data.data as string)
+        .replace(/-/g, "+")
+        .replace(/_/g, "/");
+      const binaryString = atob(base64Data);
+      const arr = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        arr[i] = binaryString.charCodeAt(i);
+      }
+      bytes = arr;
+    } else {
+      // Treat as direct link: fetch and read as bytes
+      const fileRes = await fetch(fileUrl);
+      if (!fileRes.ok) {
+        console.error(
+          `Failed to download bill from link for bill ${importedBillId} - status=${fileRes.status}`,
+        );
+        return;
+      }
+      const arrayBuffer = await fileRes.arrayBuffer();
+      bytes = new Uint8Array(arrayBuffer);
+    }
+
+    if (!bytes || bytes.length === 0) {
+      console.error(
+        `No bytes downloaded for bill ${importedBillId}, skipping OCR`,
+      );
+      return;
+    }
+
+    // 2) Convert to base64 for Vision API
+    const base64Data = bytesToBase64(bytes);
+
+    console.log(
+      `Calling Google Vision API for bill ${importedBillId} (subject="${subject}")`,
+    );
+
+    const visionResponse = await fetch(
+      `https://vision.googleapis.com/v1/images:annotate?key=${googleVisionApiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requests: [
+            {
+              image: { content: base64Data },
+              features: [
+                { type: "TEXT_DETECTION" },
+                { type: "DOCUMENT_TEXT_DETECTION" },
+              ],
+            },
+          ],
+        }),
+      },
+    );
+
+    if (!visionResponse.ok) {
+      const errorText = await visionResponse.text().catch(() => "");
+      console.error(
+        `Google Vision API error for bill ${importedBillId}: ${errorText}`,
+      );
+      return;
+    }
+
+    const visionData = await visionResponse.json();
+    const visionResponse0 = visionData.responses?.[0];
+
+    if (!visionResponse0 || visionResponse0.error) {
+      console.error(
+        `Vision API error response for bill ${importedBillId}: ${JSON.stringify(visionResponse0?.error)}`,
+      );
+      return;
+    }
+
+    const extractedText = visionResponse0.fullTextAnnotation?.text || "";
+    console.log(
+      `Extracted ${extractedText.length} characters from bill ${importedBillId}`,
+    );
+
+    // Very simple date extraction like in ocr-process-bill
+    const dateRegex =
+      /(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2})/g;
+    const dates = (extractedText.match(dateRegex) as string[]) || [];
+
+    const billTerms = [
+      "due date",
+      "expiry",
+      "warranty",
+      "invoice",
+      "amount",
+      "total",
+      "bill",
+      "payment",
+    ];
+    const billTermsFound = billTerms.filter((term) =>
+      extractedText.toLowerCase().includes(term)
+    );
+
+    // Insert OCR result
+    const ocrResultId = crypto.randomUUID();
+
+    const { error: ocrInsertError } = await supabaseClient
+      .from("ocr_results")
+      .insert({
+        id: ocrResultId,
+        user_id: userId,
+        text: extractedText,
+        extracted_data: {
+          dates,
+          bill_terms_found: billTermsFound,
+          document_type: "bill",
+        },
+        confidence: 0.85,
+        metadata: {
+          source: "email_import_auto",
+          billSubject: subject,
+        },
+      });
+
+    if (ocrInsertError) {
+      console.error(
+        `Error saving OCR result for bill ${importedBillId}: ${JSON.stringify(ocrInsertError)}`,
+      );
+      return;
+    }
+
+    // Optionally pick a naive due date: latest parsed date
+    let extractedDueDate: string | null = null;
+    if (dates.length > 0) {
+      const parsedDates = dates
+        .map((d) => Date.parse(d))
+        .filter((t) => !Number.isNaN(t));
+      if (parsedDates.length > 0) {
+        const latest = new Date(Math.max(...parsedDates));
+        extractedDueDate = latest.toISOString().split("T")[0];
+      }
+    }
+
+    // Update imported_bills with OCR result id and optional due date
+    const { error: billUpdateError } = await supabaseClient
+      .from("imported_bills")
+      .update({
+        ocr_result_id: ocrResultId,
+        extracted_due_date: extractedDueDate,
+      })
+      .eq("id", importedBillId);
+
+    if (billUpdateError) {
+      console.error(
+        `Error linking OCR result to bill ${importedBillId}: ${JSON.stringify(billUpdateError)}`,
+      );
+      return;
+    }
+
+    // Create a reminder if we have a due date
+    if (extractedDueDate) {
+      const reminderTitle = `Bill Reminder: ${subject || "Imported Bill"}`;
+      const { error: reminderError } = await supabaseClient
+        .from("reminders")
+        .insert({
+          user_id: userId,
+          title: reminderTitle,
+          description: extractedText.substring(0, 200),
+          due_date: extractedDueDate,
+          source_type: "email_import",
+          source_id: importedBillId,
+          status: "pending",
+        });
+
+      if (reminderError) {
+        console.error(
+          `Error creating reminder for bill ${importedBillId}: ${JSON.stringify(reminderError)}`,
+        );
+      } else {
+        console.log(
+          `Auto OCR + reminder created for bill ${importedBillId} (due date ${extractedDueDate})`,
+        );
+      }
+    } else {
+      console.log(
+        `Auto OCR completed for bill ${importedBillId}, but no due date detected`,
+      );
+    }
+  } catch (error) {
+    console.error(
+      `Error running OCR for imported bill ${params.importedBillId} - message=${(error as Error).message}`,
+    );
   }
 }
 
@@ -38,7 +304,9 @@ async function refreshTokenIfNeeded(
   const bufferTime = 5 * 60 * 1000; // 5 minute buffer
 
   if (now.getTime() > expiresAt.getTime() - bufferTime) {
-    console.log("Token expired or expiring soon, refreshing...");
+    console.log(
+      `Token expired or expiring soon for user ${emailImport.user_id}, refreshing...`,
+    );
 
     if (!emailImport.oauth_refresh_token) {
       throw new Error("No refresh token available");
@@ -62,7 +330,13 @@ async function refreshTokenIfNeeded(
     });
 
     if (!response.ok) {
-      throw new Error("Failed to refresh token");
+      const body = await response.text().catch(() => "");
+      console.error(
+        `Failed to refresh token for user ${emailImport.user_id} - status=${response.status}, body=${body}`,
+      );
+      throw new Error(
+        `Failed to refresh token: ${response.status} ${response.statusText}`,
+      );
     }
 
     const data = await response.json();
@@ -89,9 +363,12 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const googleClientId = Deno.env.get("VITE_GOOGLE_CLIENT_ID");
     const googleClientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+    const googleVisionApiKey = Deno.env.get("VITE_GOOGLE_VISION_API_KEY");
 
-    if (!supabaseUrl || !supabaseKey || !googleClientId || !googleClientSecret) {
-      console.error("Missing environment variables");
+    if (!supabaseUrl || !supabaseKey || !googleClientId || !googleClientSecret || !googleVisionApiKey) {
+      console.error(
+        `Missing environment variables - SUPABASE_URL=${!!supabaseUrl}, SUPABASE_SERVICE_ROLE_KEY=${!!supabaseKey}, VITE_GOOGLE_CLIENT_ID=${!!googleClientId}, GOOGLE_CLIENT_SECRET=${!!googleClientSecret}, VITE_GOOGLE_VISION_API_KEY=${!!googleVisionApiKey}`,
+      );
       return new Response(
         JSON.stringify({ error: "Server configuration error" }),
         { status: 500, headers: corsHeaders }
@@ -107,7 +384,9 @@ serve(async (req) => {
       .eq("enabled", true) as { data: EmailImportSettings[] | null; error: any };
 
     if (queryError) {
-      console.error("Error fetching email imports:", queryError);
+      console.error(
+        `Error fetching email imports - error=${JSON.stringify(queryError)}`,
+      );
       throw queryError;
     }
 
@@ -156,8 +435,12 @@ serve(async (req) => {
         );
 
         if (!gmailResponse.ok) {
+          const body = await gmailResponse.text().catch(() => "");
+          console.error(
+            `Gmail list API error for user ${emailImport.user_id} - status=${gmailResponse.status}, body=${body}`,
+          );
           throw new Error(
-            `Gmail API error: ${gmailResponse.status} ${gmailResponse.statusText}`
+            `Gmail list API error: ${gmailResponse.status} ${gmailResponse.statusText}`,
           );
         }
 
@@ -172,12 +455,19 @@ serve(async (req) => {
         for (const message of messages) {
           try {
             // Check if already imported
-            const { data: existing } = await supabaseClient
+            const { data: existing, error: existingError } = await supabaseClient
               .from("imported_bills")
               .select("id")
               .eq("user_id", emailImport.user_id)
               .eq("gmail_message_id", message.id)
               .single();
+
+            if (existingError && existingError.code !== "PGRST116") {
+              console.error(
+                `Error checking existing imported bill for user ${emailImport.user_id}, message ${message.id} - error=${JSON.stringify(existingError)}`,
+              );
+              throw existingError;
+            }
 
             if (existing) {
               console.log(`Message ${message.id} already imported, skipping`);
@@ -193,6 +483,16 @@ serve(async (req) => {
                 },
               }
             );
+
+            if (!messageResponse.ok) {
+              const body = await messageResponse.text().catch(() => "");
+              console.error(
+                `Gmail message API error for user ${emailImport.user_id}, message ${message.id} - status=${messageResponse.status}, body=${body}`,
+              );
+              throw new Error(
+                `Gmail message API error: ${messageResponse.status} ${messageResponse.statusText}`,
+              );
+            }
 
             const messageData = await messageResponse.json();
             const headers = messageData.payload?.headers || [];
@@ -245,8 +545,37 @@ serve(async (req) => {
               }
             }
 
+            // Additional heuristic filtering: only treat as bill-like emails
+            const combinedText = `${subject} ${from}`.toLowerCase();
+            const billKeywords = [
+              "bill",
+              "invoice",
+              "statement",
+              "payment due",
+              "amount due",
+              "subscription",
+              "renewal",
+              "warranty",
+              "policy",
+              "receipt",
+            ];
+            const looksLikeBill = billKeywords.some((kw) =>
+              combinedText.includes(kw)
+            );
+
+            // Skip messages that don't have any attachment/link OR don't look like bills
+            if (!fileUrl || !looksLikeBill) {
+              console.log(
+                `Skipping message ${message.id} (looksLikeBill=${looksLikeBill}, hasFile=${!!fileUrl})`,
+              );
+              continue;
+            }
+
             // Save imported bill record
-            const { error: insertError } = await supabaseClient
+            const {
+              data: insertedBill,
+              error: insertError,
+            } = await supabaseClient
               .from("imported_bills")
               .insert({
                 user_id: emailImport.user_id,
@@ -257,13 +586,29 @@ serve(async (req) => {
                 received_at: new Date(receivedDate),
                 file_url: fileUrl,
                 file_type: fileType,
-              });
+              })
+              .select("id")
+              .single();
 
-            if (insertError) {
-              console.error(`Error saving imported bill:`, insertError);
+            if (insertError || !insertedBill) {
+              console.error(
+                `Error saving imported bill for user ${emailImport.user_id}, message ${message.id} - error=${JSON.stringify(insertError)}`,
+              );
             } else {
-              console.log(`Imported bill: ${subject}`);
+              console.log(
+                `Imported bill: ${subject} (id=${insertedBill.id}) - starting OCR`,
+              );
               syncedCount++;
+              // Auto-run OCR + reminder creation for this imported bill
+              await runOcrForImportedBill(supabaseClient, {
+                userId: emailImport.user_id,
+                importedBillId: insertedBill.id,
+                subject,
+                fileUrl,
+                fileType,
+                accessToken,
+                googleVisionApiKey,
+              });
             }
           } catch (messageError) {
             console.error(`Error processing message ${message.id}:`, messageError);
@@ -280,7 +625,9 @@ serve(async (req) => {
           })
           .eq("user_id", emailImport.user_id);
       } catch (userError) {
-        console.error(`Error syncing for user ${emailImport.user_id}:`, userError);
+        console.error(
+          `Error syncing for user ${emailImport.user_id} - message=${(userError as Error).message}`,
+        );
         errorCount++;
 
         // Save error message
@@ -307,7 +654,9 @@ serve(async (req) => {
       { status: 200, headers: corsHeaders }
     );
   } catch (error) {
-    console.error("Unexpected error:", error);
+    console.error(
+      `Unexpected error in sync-email-bills - message=${(error as Error).message}`,
+    );
     return new Response(JSON.stringify({ error: "Internal server error" }), {
       status: 500,
       headers: corsHeaders,

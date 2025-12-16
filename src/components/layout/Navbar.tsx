@@ -24,7 +24,7 @@ export const Navbar: React.FC = () => {
   const navLinks = [
     { href: '/ocr', label: 'OCR Scanner' },
     { href: '/dashboard', label: 'Dashboard' },
-    { href: '/settings', label: 'Settings' },
+    { href: '/settings', label: 'AutoImport Bills' },
     { href: '/pricing', label: 'Pricing' },
   ];
 

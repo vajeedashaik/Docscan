@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { FileText, Calendar, Mail, ExternalLink, CheckCircle, Loader } from 'lucide-react';
+import { FileText, Calendar, Mail, ExternalLink, CheckCircle, Loader, Info } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +14,7 @@ export const ImportedBillsList: React.FC = () => {
   const { processBill, processing } = useOCRBillIntegration(userId || '');
   const [processingBillId, setProcessingBillId] = useState<string | null>(null);
   const [billOCRStatus, setBillOCRStatus] = useState<Record<string, boolean>>({});
+  const [expandedBillId, setExpandedBillId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchImportedBills();
@@ -23,14 +24,24 @@ export const ImportedBillsList: React.FC = () => {
     if (!userId) return;
     setProcessingBillId(billId);
     try {
-      const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-      // Get access token from email import settings
-      // In a real app, you'd fetch the actual access token
+      // Access token is managed on the backend now; just mark as processed in UI
       await processBill(billId, '');
       setBillOCRStatus((prev) => ({ ...prev, [billId]: true }));
     } finally {
       setProcessingBillId(null);
     }
+  };
+
+  const getDueStatus = (dueDate?: string | null) => {
+    if (!dueDate) return null;
+    const today = new Date();
+    const due = new Date(dueDate);
+    const diffDays = Math.floor((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) return { label: 'Expired', variant: 'destructive' as const };
+    if (diffDays === 0) return { label: 'Due today', variant: 'warning' as const };
+    if (diffDays <= 7) return { label: `Due in ${diffDays} days`, variant: 'secondary' as const };
+    return { label: `Due on ${format(due, 'MMM dd, yyyy')}`, variant: 'outline' as const };
   };
 
   if (importedBills.length === 0) {
@@ -65,10 +76,15 @@ export const ImportedBillsList: React.FC = () => {
 
       <CardContent>
         <div className="space-y-3">
-          {importedBills.map((bill) => (
+          {importedBills.map((bill) => {
+            const dueStatus = getDueStatus(bill.extracted_due_date);
+            const isExpanded = expandedBillId === bill.id;
+
+            return (
             <div
               key={bill.id}
-              className="p-4 border border-border/50 rounded-lg hover:bg-muted/30 transition-colors"
+              className="p-4 border border-border/50 rounded-lg hover:bg-muted/30 transition-colors cursor-pointer"
+              onClick={() => setExpandedBillId(isExpanded ? null : bill.id)}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
@@ -84,14 +100,14 @@ export const ImportedBillsList: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2 mt-3">
+                  <div className="flex flex-wrap gap-2 mt-3 items-center">
                     <Badge variant="outline" className="text-xs">
                       {bill.file_type === 'attachment' ? 'Attachment' : 'Link'}
                     </Badge>
-                    {bill.extracted_due_date && (
-                      <Badge variant="secondary" className="text-xs flex items-center gap-1">
+                    {dueStatus && (
+                      <Badge variant={dueStatus.variant} className="text-xs flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
-                        Due: {format(new Date(bill.extracted_due_date), 'MMM dd')}
+                        {dueStatus.label}
                       </Badge>
                     )}
                     {billOCRStatus[bill.id] && (
@@ -105,6 +121,31 @@ export const ImportedBillsList: React.FC = () => {
                   <p className="text-xs text-muted-foreground mt-2">
                     Received: {format(new Date(bill.received_at), 'MMM dd, yyyy HH:mm')}
                   </p>
+
+                  {isExpanded && (
+                    <div className="mt-3 pt-3 border-t border-border/30 space-y-2 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-2 text-foreground">
+                        <Info className="h-3 w-3" />
+                        <span className="font-semibold text-xs">Bill details</span>
+                      </div>
+                      <p>
+                        <span className="font-medium">From:</span> {bill.from_email}
+                      </p>
+                      {bill.extracted_due_date && (
+                        <p>
+                          <span className="font-medium">Extracted due date:</span>{' '}
+                          {format(new Date(bill.extracted_due_date), 'MMM dd, yyyy')}
+                        </p>
+                      )}
+                      <p>
+                        <span className="font-medium">Gmail message ID:</span> {bill.gmail_message_id}
+                      </p>
+                      <p>
+                        <span className="font-medium">Imported at:</span>{' '}
+                        {format(new Date(bill.created_at), 'MMM dd, yyyy HH:mm')}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {bill.file_url && (
@@ -140,7 +181,7 @@ export const ImportedBillsList: React.FC = () => {
                 )}
               </div>
             </div>
-          ))}
+          );})}
         </div>
       </CardContent>
     </Card>

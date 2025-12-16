@@ -100,9 +100,9 @@ serve(async (req) => {
 
     const tokenData = (await tokenResponse.json()) as TokenResponse;
 
-    // Get user email from Google
+    // Get user email from Google (use Gmail profile API so it works with Gmail scopes)
     const userInfoResponse = await fetch(
-      "https://www.googleapis.com/oauth2/v2/userinfo",
+      "https://gmail.googleapis.com/gmail/v1/users/me/profile",
       {
         headers: {
           Authorization: `Bearer ${tokenData.access_token}`,
@@ -111,16 +111,23 @@ serve(async (req) => {
     );
 
     if (!userInfoResponse.ok) {
-      console.error("Failed to get user info from Google");
+      const errorText = await userInfoResponse.text();
+      // Log everything as a single string so Supabase UI shows the full error
+      console.error(
+        `Failed to get user info from Google - status=${userInfoResponse.status}, body=${errorText}`,
+      );
       return new Response(
-        JSON.stringify({ error: "Failed to get user email from Google" }),
+        JSON.stringify({
+          error: "Failed to get user email from Google",
+          details: errorText,
+          status: userInfoResponse.status,
+        }),
         { status: 400, headers: corsHeaders }
       );
     }
 
     const userInfo = (await userInfoResponse.json()) as {
-      email: string;
-      name?: string;
+      emailAddress: string;
     };
 
     // Save tokens to Supabase
@@ -144,7 +151,7 @@ serve(async (req) => {
         {
           user_id: userId,
           provider: "gmail",
-          email_address: userInfo.email,
+          email_address: userInfo.emailAddress,
           enabled: true,
           oauth_token: encryptedAccessToken,
           oauth_refresh_token: encryptedRefreshToken,
@@ -170,7 +177,7 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         message: "Gmail connected successfully",
-        email: userInfo.email,
+        email: userInfo.emailAddress,
       }),
       { status: 200, headers: corsHeaders }
     );

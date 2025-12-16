@@ -1,0 +1,4 @@
+[#] Disable JWT verification for the public OAuth callback handler
+[functions.auth-gmail-token]
+verify_jwt = false
+

@@ -7,6 +7,7 @@ import {
   getImportedBills,
   updateLastSyncedAt,
   updateSyncError,
+  triggerEmailSync,
   type EmailImportSettings,
   type ImportedBill,
 } from '@/integrations/email/gmailService';
@@ -97,11 +98,11 @@ export const useEmailImport = () => {
 
     setSyncing(true);
     try {
-      // This will be handled by backend service
-      await updateLastSyncedAt(userId);
+      // Trigger backend sync job and refresh data
+      await triggerEmailSync();
       toast({
         title: 'Syncing',
-        description: 'Checking for new bills in your email...',
+        description: 'Syncing your email for new bills...',
       });
       await fetchImportedBills();
     } catch (error) {

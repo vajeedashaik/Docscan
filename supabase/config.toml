@@ -30,5 +30,8 @@ enable_signup = true
 double_confirm_changes = true
 enable_confirmations = false
 
+[functions.auth-gmail-token]
+verify_jwt = false
+
 [functions.ocr-extract]
 verify_jwt = false
