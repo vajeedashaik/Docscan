@@ -24,7 +24,7 @@ export const ImportedBillsList: React.FC = () => {
     if (!userId) return;
     setProcessingBillId(billId);
     try {
-      // Access token is managed on the backend now; just mark as processed in UI
+      // Process bill via backend Edge Function (no access token needed)
       await processBill(billId, '');
       setBillOCRStatus((prev) => ({ ...prev, [billId]: true }));
     } finally {

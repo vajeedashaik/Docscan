@@ -34,7 +34,7 @@ export const useOCRBillIntegration = (
   const [errorCount, setErrorCount] = useState(0);
 
   const processBill = useCallback(
-    async (importedBillId: string, accessToken: string) => {
+    async (importedBillId: string, _accessToken?: string) => {
       try {
         setProcessing(true);
 
@@ -49,8 +49,8 @@ export const useOCRBillIntegration = (
           throw new Error('Failed to fetch bill');
         }
 
-        // Process the bill
-        await processImportedBillFull(bill, userId, accessToken);
+        // Process the bill via Edge Function (access token handled on backend)
+        await processImportedBillFull(bill, userId);
 
         setProcessedCount((count) => count + 1);
         toast({
@@ -76,7 +76,7 @@ export const useOCRBillIntegration = (
   );
 
   const processBatch = useCallback(
-    async (accessToken: string): Promise<number> => {
+    async (_accessToken?: string): Promise<number> => {
       try {
         setProcessing(true);
         const unprocessedBills = await getUnprocessedBills(userId);
@@ -93,7 +93,7 @@ export const useOCRBillIntegration = (
 
         for (const bill of unprocessedBills) {
           try {
-            await processImportedBillFull(bill, userId, accessToken);
+            await processImportedBillFull(bill, userId);
             successCount++;
           } catch (error) {
             console.error(`Error processing bill ${bill.id}:`, error);
@@ -137,7 +137,7 @@ export const useOCRBillIntegration = (
   );
 
   const retryFailedBill = useCallback(
-    async (importedBillId: string, accessToken: string) => {
+    async (importedBillId: string, _accessToken?: string) => {
       try {
         // Reset OCR result
         await supabase
@@ -149,8 +149,8 @@ export const useOCRBillIntegration = (
           })
           .eq('id', importedBillId);
 
-        // Retry processing
-        await processBill(importedBillId, accessToken);
+        // Retry processing (access token handled on backend)
+        await processBill(importedBillId);
       } catch (error) {
         console.error('Error retrying bill:', error);
         toast({

@@ -1,6 +1,7 @@
 /**
  * Email-to-OCR Integration
  * Handles automatic OCR processing of imported bills from email
+ * Now uses backend Edge Function for secure Gmail attachment downloads
  */
 
 import { supabase } from '@/integrations/supabase/client';
@@ -20,125 +21,38 @@ export interface BillOCRJob {
 }
 
 /**
- * Download bill document from Gmail attachment or link
+ * Process bill OCR using backend Edge Function
+ * This handles downloading Gmail attachments securely with proper authentication
  */
-export const downloadBillDocument = async (
-  fileUrl: string,
-  fileType: 'attachment' | 'link',
-  accessToken: string
-): Promise<Blob> => {
-  try {
-    if (fileType === 'link') {
-      // Download from direct link
-      const response = await fetch(fileUrl);
-      if (!response.ok) {
-        throw new Error(`Failed to download from link: ${response.statusText}`);
-      }
-      return await response.blob();
-    } else if (fileType === 'attachment') {
-      // fileUrl format: gmail://messageId/partId
-      const [, messageId, partId] = fileUrl.match(/gmail:\/\/(.*?)\/(.*)/);
-
-      const response = await fetch(
-        `https://www.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${partId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(
-          `Failed to download Gmail attachment: ${response.statusText}`
-        );
-      }
-
-      const data = await response.json();
-      const binaryString = atob(data.data);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      return new Blob([bytes]);
-    }
-
-    throw new Error(`Unknown file type: ${fileType}`);
-  } catch (error) {
-    console.error('Error downloading bill document:', error);
-    throw error;
-  }
-};
-
-/**
- * Upload bill document to Supabase storage for OCR processing
- */
-export const uploadBillToStorage = async (
-  bill: any,
-  blob: Blob,
+export const processBillOCRViaEdgeFunction = async (
+  importedBillId: string,
   userId: string
 ): Promise<string> => {
   try {
-    const fileName = `bills/${userId}/${bill.id}_${Date.now()}`;
-    const fileExtension = blob.type.includes('pdf') ? 'pdf' : 'jpg';
-    const filePath = `${fileName}.${fileExtension}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from('bill-documents')
-      .upload(filePath, blob, {
-        contentType: blob.type,
-        upsert: false,
-      });
-
-    if (uploadError) {
-      throw uploadError;
-    }
-
-    // Get public URL
-    const { data } = supabase.storage
-      .from('bill-documents')
-      .getPublicUrl(filePath);
-
-    return data.publicUrl;
-  } catch (error) {
-    console.error('Error uploading bill to storage:', error);
-    throw error;
-  }
-};
-
-/**
- * Create OCR job from imported bill
- */
-export const createOCRJobFromBill = async (
-  importedBillId: string,
-  userId: string,
-  storagePath: string,
-  billSubject: string
-): Promise<string> => {
-  try {
-    // Call the Google Vision API through supabase edge function
-    const response = await fetch('/api/ocr-process-bill', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    // Call the backend Edge Function using Supabase client
+    const { data, error } = await supabase.functions.invoke('process-bill-ocr', {
+      body: {
         importedBillId,
         userId,
-        storagePath,
-        billSubject,
-      }),
+      },
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to create OCR job');
+    if (error) {
+      console.error('Edge Function error:', error);
+      throw new Error(error.message || 'Edge Function error');
     }
 
-    const data = await response.json();
+    if (!data) {
+      throw new Error('Edge Function returned no data');
+    }
+
+    if (!data.success) {
+      throw new Error(data.error || 'Edge Function returned error');
+    }
+
     return data.ocrResultId;
   } catch (error) {
-    console.error('Error creating OCR job:', error);
+    console.error('Error processing bill via Edge Function:', error);
     throw error;
   }
 };
@@ -152,13 +66,16 @@ export const processBillOCRResult = async (
   userId: string
 ): Promise<{ dueDate?: string; reminderId?: string }> => {
   try {
-    const dateDetails = ocrResult.extracted_data?.date_details || {};
-
-    // Priority: warranty expiry > next service due > payment due date
-    const dueDate =
-      dateDetails.warrantyExpiry ||
-      dateDetails.nextServiceDue ||
-      dateDetails.paymentDueDate;
+    // Extract dates from the OCR result text or extracted items
+    let dueDate: string | undefined;
+    
+    // Check if we have extracted dates in the OCR result
+    if (ocrResult.extracted_items?.dates) {
+      const dates = ocrResult.extracted_items.dates;
+      if (Array.isArray(dates) && dates.length > 0) {
+        dueDate = dates[0]; // Take first date found
+      }
+    }
 
     if (!dueDate) {
       console.log('No due date found in OCR result');
@@ -179,16 +96,14 @@ export const processBillOCRResult = async (
     }
 
     // Create a reminder for this bill
-    const vendorName =
-      ocrResult.extracted_data?.vendor_details?.name || 'Imported Bill';
-    const reminderTitle = `Bill Reminder: ${vendorName}`;
+    const reminderTitle = `Bill Reminder`;
 
     const { data: reminder, error: reminderError } = await supabase
       .from('reminders')
       .insert({
         user_id: userId,
         title: reminderTitle,
-        description: ocrResult.extracted_data?.text?.substring(0, 200),
+        description: `Bill imported from email - extracted text preview`,
         due_date: dueDate,
         source_type: 'email_import',
         source_id: importedBillId,
@@ -240,43 +155,25 @@ export const linkOCRToImportedBill = async (
 };
 
 /**
- * Full pipeline: Download bill -> Upload -> Process with OCR -> Create reminder
+ * Full pipeline: Process bill OCR via Edge Function -> Create reminder
  */
 export const processImportedBillFull = async (
   importedBill: any,
   userId: string,
-  accessToken: string
+  _accessToken?: string
 ): Promise<void> => {
   try {
     console.log(`Processing bill: ${importedBill.subject}`);
 
-    // Step 1: Download bill document
-    console.log('Step 1: Downloading bill document...');
-    const billBlob = await downloadBillDocument(
-      importedBill.file_url,
-      importedBill.file_type,
-      accessToken
-    );
-
-    // Step 2: Upload to storage
-    console.log('Step 2: Uploading bill to storage...');
-    const storagePath = await uploadBillToStorage(
-      importedBill,
-      billBlob,
+    // Step 1: Call Edge Function to download bill and run OCR
+    console.log('Step 1: Processing bill through Edge Function...');
+    const ocrResultId = await processBillOCRViaEdgeFunction(
+      importedBill.id,
       userId
     );
 
-    // Step 3: Create OCR job
-    console.log('Step 3: Creating OCR job...');
-    const ocrResultId = await createOCRJobFromBill(
-      importedBill.id,
-      userId,
-      storagePath,
-      importedBill.subject
-    );
-
-    // Step 4: Fetch OCR result (after processing)
-    console.log('Step 4: Fetching OCR result...');
+    // Step 2: Fetch OCR result
+    console.log('Step 2: Fetching OCR result...');
     const { data: ocrResult } = await supabase
       .from('ocr_results')
       .select('*')
@@ -284,8 +181,8 @@ export const processImportedBillFull = async (
       .single();
 
     if (ocrResult) {
-      // Step 5: Extract dates and create reminders
-      console.log('Step 5: Extracting dates and creating reminders...');
+      // Step 3: Extract dates and create reminders
+      console.log('Step 3: Extracting dates and creating reminders...');
       await processBillOCRResult(importedBill.id, ocrResult, userId);
     }
 
