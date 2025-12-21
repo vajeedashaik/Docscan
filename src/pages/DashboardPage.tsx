@@ -20,6 +20,7 @@ import { Badge } from '@/components/ui/badge';
 import { Navbar } from '@/components/layout/Navbar';
 import { RemindersList } from '@/components/reminders/RemindersList';
 import { DocumentList } from '@/components/dashboard/DocumentList';
+import { ImportedBillsDashboardCard } from '@/components/dashboard/ImportedBillsDashboardCard';
 import { useReminders } from '@/hooks/useReminders';
 import { useDocumentMetadata } from '@/hooks/useDocumentMetadata';
 import { useOCRStats } from '@/hooks/useOCRStats';
@@ -219,7 +220,7 @@ const DashboardPage: React.FC = () => {
                       />
                     </div>
 
-                    {/* Quick Actions */}
+                    {/* Quick Actions + Imported Bills */}
                     <div className="space-y-4">
                       <Card className="border-border/50 bg-card/50 backdrop-blur">
                         <CardHeader>
@@ -247,6 +248,9 @@ const DashboardPage: React.FC = () => {
                           </p>
                         </CardContent>
                       </Card>
+
+                      {/* Imported email bills with due dates */}
+                      <ImportedBillsDashboardCard />
                     </div>
                   </div>
                 </>

@@ -145,28 +145,53 @@ serve(async (req) => {
     console.log("Found bill terms:", billTermsFound);
     console.log("Found dates:", dates);
 
-    // Create OCR result record
-    const ocrResultId = crypto.randomUUID();
-    const { error: insertError } = await supabaseClient
+    // Create OCR job record
+    const jobStart = Date.now();
+    const { data: ocrJob, error: jobError } = await supabaseClient
+      .from("ocr_jobs")
+      .insert({
+        file_name: storagePath,
+        file_type: fileType || "upload",
+        file_size: fileData.size ?? null,
+        status: "completed",
+        completed_at: new Date().toISOString(),
+        processing_time_ms: Date.now() - jobStart,
+        user_id: userId,
+      })
+      .select()
+      .single();
+
+    if (jobError || !ocrJob) {
+      console.error("Error creating OCR job:", jobError);
+      return new Response(
+        JSON.stringify({ error: "Failed to create OCR job" }),
+        { status: 500, headers: corsHeaders }
+      );
+    }
+
+    // Create OCR result record linked to the job
+    const { data: ocrResult, error: insertError } = await supabaseClient
       .from("ocr_results")
       .insert({
-        id: ocrResultId,
-        user_id: userId,
-        text: extractedText,
+        job_id: ocrJob.id,
+        document_type: "bill",
+        raw_text: extractedText,
+        confidence: 0.85, // Default confidence
         extracted_data: {
           dates: dates,
           bill_terms_found: billTermsFound,
           document_type: "bill",
         },
-        confidence: 0.85, // Default confidence
         metadata: {
           fileName: storagePath,
           source: "email_import",
           billSubject: billSubject,
         },
-      });
+      })
+      .select()
+      .single();
 
-    if (insertError) {
+    if (insertError || !ocrResult) {
       console.error("Error saving OCR result:", insertError);
       return new Response(
         JSON.stringify({ error: "Failed to save OCR result" }),
@@ -178,7 +203,7 @@ serve(async (req) => {
     const { error: linkError } = await supabaseClient
       .from("imported_bills")
       .update({
-        ocr_result_id: ocrResultId,
+        ocr_result_id: ocrResult.id,
       })
       .eq("id", importedBillId);
 

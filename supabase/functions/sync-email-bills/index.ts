@@ -75,7 +75,7 @@ async function runOcrForImportedBill(
     let bytes: Uint8Array | null = null;
 
     if (fileType === "attachment" && fileUrl.startsWith("gmail://")) {
-      // gmail://messageId/partId
+      // gmail://messageId/attachmentId
       const match = fileUrl.match(/^gmail:\/\/([^/]+)\/(.+)$/);
       if (!match) {
         console.error(
@@ -83,10 +83,10 @@ async function runOcrForImportedBill(
         );
         return;
       }
-      const [, messageId, partId] = match;
+      const [, messageId, attachmentId] = match;
 
       const attachmentRes = await fetch(
-        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${partId}`,
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachmentId}`,
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -182,7 +182,7 @@ async function runOcrForImportedBill(
       `Extracted ${extractedText.length} characters from bill ${importedBillId}`,
     );
 
-    // Very simple date extraction like in ocr-process-bill
+    // Extract dates with improved logic
     const dateRegex =
       /(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2})/g;
     const dates = (extractedText.match(dateRegex) as string[]) || [];
@@ -201,51 +201,125 @@ async function runOcrForImportedBill(
       extractedText.toLowerCase().includes(term)
     );
 
-    // Insert OCR result
-    const ocrResultId = crypto.randomUUID();
+    // Smart due date extraction: look for dates near key phrases
+    let extractedDueDate: string | null = null;
+    const lowerText = extractedText.toLowerCase();
+    const dueDateKeywords = [
+      "due date",
+      "payment due",
+      "amount due",
+      "due by",
+      "pay by",
+      "expiry date",
+      "expiration date",
+      "valid until",
+      "warranty until",
+      "renewal date",
+    ];
 
-    const { error: ocrInsertError } = await supabaseClient
+    // Try to find a date near a due date keyword
+    for (const keyword of dueDateKeywords) {
+      const keywordIndex = lowerText.indexOf(keyword);
+      if (keywordIndex !== -1) {
+        // Look for dates within 100 characters after the keyword
+        const contextText = extractedText.substring(
+          keywordIndex,
+          keywordIndex + 100
+        );
+        const contextDates = contextText.match(dateRegex);
+        if (contextDates && contextDates.length > 0) {
+          const parsedDate = Date.parse(contextDates[0]);
+          if (!Number.isNaN(parsedDate)) {
+            const dateObj = new Date(parsedDate);
+            // Only accept future dates or dates within last 30 days
+            const now = Date.now();
+            const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+            if (dateObj.getTime() > thirtyDaysAgo) {
+              extractedDueDate = dateObj.toISOString().split("T")[0];
+              console.log(
+                `Found due date ${extractedDueDate} near keyword "${keyword}" for bill ${importedBillId}`
+              );
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    // Fallback: if no due date found, pick the latest future date
+    if (!extractedDueDate && dates.length > 0) {
+      const parsedDates = dates
+        .map((d) => Date.parse(d))
+        .filter((t) => !Number.isNaN(t) && t > Date.now());
+      if (parsedDates.length > 0) {
+        const latest = new Date(Math.max(...parsedDates));
+        extractedDueDate = latest.toISOString().split("T")[0];
+        console.log(
+          `Using fallback: latest future date ${extractedDueDate} for bill ${importedBillId}`
+        );
+      }
+    }
+
+    // Create OCR job for this imported bill
+    const jobStart = Date.now();
+    const { data: ocrJob, error: ocrJobError } = await supabaseClient
+      .from("ocr_jobs")
+      .insert({
+        file_name: subject || fileUrl,
+        file_type: fileType || "email_import",
+        file_size: bytes.length,
+        status: "completed",
+        completed_at: new Date().toISOString(),
+        processing_time_ms: Date.now() - jobStart,
+        user_id: userId,
+      })
+      .select()
+      .single();
+
+    if (ocrJobError || !ocrJob) {
+      console.error(
+        `Error creating OCR job for imported bill ${importedBillId}: ${JSON.stringify(ocrJobError)}`,
+      );
+      return;
+    }
+
+    // Insert OCR result linked to the job
+    const { data: ocrResult, error: ocrInsertError } = await supabaseClient
       .from("ocr_results")
       .insert({
-        id: ocrResultId,
-        user_id: userId,
-        text: extractedText,
+        job_id: ocrJob.id,
+        document_type: "bill",
+        raw_text: extractedText,
+        confidence: 0.85,
         extracted_data: {
           dates,
           bill_terms_found: billTermsFound,
           document_type: "bill",
+          extracted_due_date: extractedDueDate,
         },
-        confidence: 0.85,
+        date_details: extractedDueDate ? { due_date: extractedDueDate } : null,
         metadata: {
           source: "email_import_auto",
           billSubject: subject,
+          fileUrl,
+          fileType,
         },
-      });
+      })
+      .select()
+      .single();
 
-    if (ocrInsertError) {
+    if (ocrInsertError || !ocrResult) {
       console.error(
         `Error saving OCR result for bill ${importedBillId}: ${JSON.stringify(ocrInsertError)}`,
       );
       return;
     }
 
-    // Optionally pick a naive due date: latest parsed date
-    let extractedDueDate: string | null = null;
-    if (dates.length > 0) {
-      const parsedDates = dates
-        .map((d) => Date.parse(d))
-        .filter((t) => !Number.isNaN(t));
-      if (parsedDates.length > 0) {
-        const latest = new Date(Math.max(...parsedDates));
-        extractedDueDate = latest.toISOString().split("T")[0];
-      }
-    }
-
     // Update imported_bills with OCR result id and optional due date
     const { error: billUpdateError } = await supabaseClient
       .from("imported_bills")
       .update({
-        ocr_result_id: ocrResultId,
+        ocr_result_id: ocrResult.id,
         extracted_due_date: extractedDueDate,
       })
       .eq("id", importedBillId);
@@ -266,10 +340,9 @@ async function runOcrForImportedBill(
           user_id: userId,
           title: reminderTitle,
           description: extractedText.substring(0, 200),
-          due_date: extractedDueDate,
-          source_type: "email_import",
-          source_id: importedBillId,
-          status: "pending",
+          reminder_type: "payment_due",
+          reminder_date: extractedDueDate,
+          notify_before_days: 7,
         });
 
       if (reminderError) {
@@ -402,6 +475,7 @@ serve(async (req) => {
 
     let syncedCount = 0;
     let errorCount = 0;
+    const errorDetails: string[] = [];
 
     // Sync emails for each user
     for (const emailImport of emailImports) {
@@ -415,12 +489,12 @@ serve(async (req) => {
           googleClientSecret
         );
 
-        // Fetch unread emails from past 7 days with bill-related keywords
-        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+        // Fetch emails from past 30 days with bill-related keywords (including read emails)
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
           .toISOString()
           .split("T")[0];
 
-        const query = `is:unread after:${sevenDaysAgo} (
+        const query = `after:${thirtyDaysAgo} (
           subject:(invoice OR bill OR receipt OR warranty OR service OR renewal OR subscription OR expiry OR due OR payment) OR
           from:(invoice OR billing OR noreply OR support)
         )`;
@@ -512,12 +586,17 @@ serve(async (req) => {
               for (const part of messageData.payload.parts) {
                 if (
                   part.filename &&
+                  part.body?.attachmentId &&
                   (part.filename.endsWith(".pdf") ||
                     part.filename.endsWith(".jpg") ||
-                    part.filename.endsWith(".png"))
+                    part.filename.endsWith(".jpeg") ||
+                    part.filename.endsWith(".png") ||
+                    part.filename.endsWith(".gif") ||
+                    part.filename.endsWith(".doc") ||
+                    part.filename.endsWith(".docx"))
                 ) {
-                  // Save attachment for processing
-                  fileUrl = `gmail://${message.id}/${part.partId}`;
+                  // Save attachment for processing (using attachmentId, not partId)
+                  fileUrl = `gmail://${message.id}/${part.body.attachmentId}`;
                   fileType = "attachment";
                   break;
                 }
@@ -611,7 +690,9 @@ serve(async (req) => {
               });
             }
           } catch (messageError) {
+            const errorMsg = `Message ${message.id}: ${(messageError as Error).message}`;
             console.error(`Error processing message ${message.id}:`, messageError);
+            errorDetails.push(errorMsg);
             errorCount++;
           }
         }
@@ -625,9 +706,11 @@ serve(async (req) => {
           })
           .eq("user_id", emailImport.user_id);
       } catch (userError) {
+        const errorMsg = `User ${emailImport.user_id}: ${(userError as Error).message}`;
         console.error(
           `Error syncing for user ${emailImport.user_id} - message=${(userError as Error).message}`,
         );
+        errorDetails.push(errorMsg);
         errorCount++;
 
         // Save error message
@@ -646,10 +729,13 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({
-        success: true,
+        success: errorCount === 0,
         synced: syncedCount,
         errors: errorCount,
-        message: `Successfully synced emails for ${emailImports.length} users`,
+        errorDetails: errorDetails.length > 0 ? errorDetails : undefined,
+        message: errorCount === 0
+          ? `Successfully synced ${syncedCount} bills from ${emailImports.length} users`
+          : `Synced ${syncedCount} bills with ${errorCount} errors`,
       }),
       { status: 200, headers: corsHeaders }
     );

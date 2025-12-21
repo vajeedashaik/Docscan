@@ -349,7 +349,13 @@ export const getImportedBills = async (userId: string, limit: number = 50): Prom
 };
 
 // Manually trigger the sync-email-bills edge function
-export const triggerEmailSync = async (): Promise<void> => {
+export const triggerEmailSync = async (): Promise<{
+  success: boolean;
+  synced: number;
+  errors: number;
+  errorDetails?: string[];
+  message: string;
+}> => {
   if (!import.meta.env.VITE_SUPABASE_URL) {
     throw new Error('SUPABASE_URL is not configured');
   }
@@ -364,6 +370,9 @@ export const triggerEmailSync = async (): Promise<void> => {
       `Failed to trigger email sync: ${response.status} ${response.statusText} ${text}`,
     );
   }
+
+  const result = await response.json();
+  return result;
 };
 
 // Update last synced time

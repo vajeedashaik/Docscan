@@ -98,13 +98,31 @@ export const useEmailImport = () => {
 
     setSyncing(true);
     try {
-      // Trigger backend sync job and refresh data
-      await triggerEmailSync();
-      toast({
-        title: 'Syncing',
-        description: 'Syncing your email for new bills...',
-      });
+      // Trigger backend sync job and get results
+      const result = await triggerEmailSync();
+      
+      // Show success or partial success message
+      if (result.success) {
+        toast({
+          title: 'Sync Complete',
+          description: result.message || `Successfully synced ${result.synced} bills`,
+        });
+      } else {
+        toast({
+          title: 'Sync Completed with Errors',
+          description: result.message || `Synced ${result.synced} bills, but encountered ${result.errors} errors`,
+          variant: 'destructive',
+        });
+        
+        // Log error details to console for debugging
+        if (result.errorDetails) {
+          console.error('Sync error details:', result.errorDetails);
+        }
+      }
+      
+      // Refresh the bills list and settings
       await fetchImportedBills();
+      await fetchSettings();
     } catch (error) {
       console.error('Error syncing emails:', error);
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
@@ -117,7 +135,7 @@ export const useEmailImport = () => {
     } finally {
       setSyncing(false);
     }
-  }, [userId, settings?.enabled, fetchImportedBills]);
+  }, [userId, settings?.enabled, fetchImportedBills, fetchSettings]);
 
   return {
     settings,

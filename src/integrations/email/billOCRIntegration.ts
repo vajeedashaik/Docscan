@@ -7,6 +7,44 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { OCRResult } from '@/types/ocr';
 
+// Helper to normalize various date string formats to ISO (YYYY-MM-DD) for Postgres DATE columns
+function normalizeDateString(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const value = String(raw).trim();
+  if (!value) return null;
+
+  // Try native Date parsing first
+  let date = new Date(value);
+  if (!isNaN(date.getTime())) {
+    return date.toISOString().split('T')[0];
+  }
+
+  // Try DD-MM-YYYY or DD/MM/YYYY or DD.MM.YYYY
+  let m = value.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})$/);
+  if (m) {
+    const [, dd, mm, yyyyRaw] = m;
+    const yyyy = yyyyRaw.length === 2 ? `20${yyyyRaw}` : yyyyRaw;
+    date = new Date(`${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`);
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().split('T')[0];
+    }
+  }
+
+  // Try MM-DD-YYYY or MM/DD/YYYY or MM.DD.YYYY
+  m = value.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})$/);
+  if (m) {
+    const [, mm, dd, yyyyRaw] = m;
+    const yyyy = yyyyRaw.length === 2 ? `20${yyyyRaw}` : yyyyRaw;
+    date = new Date(`${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`);
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().split('T')[0];
+    }
+  }
+
+  // Fallback: return null if we can't confidently parse
+  return null;
+}
+
 export interface BillOCRJob {
   id: string;
   imported_bill_id: string;
@@ -29,28 +67,76 @@ export const processBillOCRViaEdgeFunction = async (
   userId: string
 ): Promise<string> => {
   try {
-    // Call the backend Edge Function using Supabase client
-    const { data, error } = await supabase.functions.invoke('process-bill-ocr', {
+    const { data, error } = await supabase.functions.invoke<{
+      success?: boolean;
+      error?: string;
+      ocrResultId?: string;
+      [key: string]: any;
+    }>('process-bill-ocr', {
       body: {
         importedBillId,
         userId,
       },
     });
 
+    console.log('[process-bill-ocr] invoke result', { data, error });
+
+    // Network / HTTP-level error (non-2xx)
     if (error) {
-      console.error('Edge Function error:', error);
-      throw new Error(error.message || 'Edge Function error');
+      console.error('Edge Function error object:', error);
+
+      const httpError = error as any;
+      const contextErrorMessage =
+        // For FunctionsHttpError, context.error usually contains the JSON body
+        (typeof httpError?.context?.error === 'string'
+          ? httpError.context.error
+          : undefined) ||
+        (httpError?.context && JSON.stringify(httpError.context)) ||
+        httpError?.message ||
+        JSON.stringify(httpError);
+      throw new Error(contextErrorMessage || 'Edge Function error');
     }
 
+    // No error, but no data at all
     if (!data) {
       throw new Error('Edge Function returned no data');
     }
 
-    if (!data.success) {
-      throw new Error(data.error || 'Edge Function returned error');
+    // Some environments may return raw JSON string even on success.
+    let payload: any = data;
+    if (typeof payload === 'string') {
+      try {
+        payload = JSON.parse(payload);
+      } catch {
+        // leave as string; we'll handle below
+      }
     }
 
-    return data.ocrResultId;
+    // If parsing failed and it's still a string, surface it directly
+    if (typeof payload === 'string') {
+      throw new Error(payload);
+    }
+
+    // If the function responded with an explicit error field
+    if (typeof payload.error === 'string' && payload.error.length > 0) {
+      throw new Error(payload.error);
+    }
+
+    // If the function uses a success flag and it is explicitly false
+    if (payload.success === false) {
+      throw new Error(
+        typeof payload.error === 'string' && payload.error.length > 0
+          ? payload.error
+          : 'Edge Function reported failure'
+      );
+    }
+
+    // At this point we expect a valid ocrResultId
+    if (!payload.ocrResultId) {
+      throw new Error('Edge Function response missing ocrResultId');
+    }
+
+    return payload.ocrResultId;
   } catch (error) {
     console.error('Error processing bill via Edge Function:', error);
     throw error;
@@ -62,27 +148,34 @@ export const processBillOCRViaEdgeFunction = async (
  */
 export const processBillOCRResult = async (
   importedBillId: string,
-  ocrResult: OCRResult,
+  ocrResult: any,
   userId: string
 ): Promise<{ dueDate?: string; reminderId?: string }> => {
   try {
     // Extract dates from the OCR result text or extracted items
     let dueDate: string | undefined;
     
-    // Check if we have extracted dates in the OCR result
-    if (ocrResult.extracted_items?.dates) {
-      const dates = ocrResult.extracted_items.dates;
-      if (Array.isArray(dates) && dates.length > 0) {
-        dueDate = dates[0]; // Take first date found
+    // Support both legacy `extracted_items` and new `extracted_data` JSON shapes
+    const datesSource =
+      ocrResult?.extracted_items?.dates ||
+      ocrResult?.extracted_data?.dates ||
+      ocrResult?.extracted_data?.dates?.values ||
+      [];
+
+    if (Array.isArray(datesSource) && datesSource.length > 0) {
+      const rawDate = datesSource[0];
+      const normalized = normalizeDateString(rawDate);
+      if (normalized) {
+        dueDate = normalized; // Always store ISO (YYYY-MM-DD)
       }
     }
 
     if (!dueDate) {
-      console.log('No due date found in OCR result');
+      console.log('No valid due date found in OCR result');
       return {};
     }
 
-    // Update imported bill with extracted due date
+    // Update imported bill with extracted due date (DATE column expects ISO yyyy-mm-dd)
     const { error: updateError } = await supabase
       .from('imported_bills')
       .update({
@@ -104,10 +197,10 @@ export const processBillOCRResult = async (
         user_id: userId,
         title: reminderTitle,
         description: `Bill imported from email - extracted text preview`,
-        due_date: dueDate,
-        source_type: 'email_import',
-        source_id: importedBillId,
-        status: 'pending',
+        reminder_type: 'payment_due',
+        // reminders.reminder_date is DATE; send ISO string (yyyy-mm-dd)
+        reminder_date: dueDate,
+        notify_before_days: 7,
       })
       .select()
       .single();

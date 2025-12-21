@@ -3,7 +3,7 @@
 ## Project info
 
 **URL**: https://lovable.dev/projects/85a3937c-d0be-414b-b7c8-8c9
-i want u to atleast cm on meets and text like this 
+
 **Use Lovable**
 
 Simply visit the [Lovable Project](https://lovable.dev/projects/85a3937c-d0be-414b-b7c8-8c9544de4aa2) and start prompting.
@@ -30,7 +30,7 @@ npm i
 
 # Step 4: Start the development server with auto-reloading and an instant preview.
 npm run dev
-
+```
 
 **Edit a file directly in GitHub**
 

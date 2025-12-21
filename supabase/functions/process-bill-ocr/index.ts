@@ -6,6 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, accept",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Max-Age": "86400",
+  "Content-Type": "application/json",
 };
 
 interface ProcessBillOCRRequest {
@@ -20,6 +21,33 @@ function bytesToBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(bytes[i]);
   }
   return btoa(binary);
+}
+
+// Very lightweight file type detection from magic bytes
+function detectFileKind(bytes: Uint8Array): "image" | "pdf" | "other" {
+  if (bytes.length < 4) return "other";
+
+  const b0 = bytes[0];
+  const b1 = bytes[1];
+  const b2 = bytes[2];
+  const b3 = bytes[3];
+
+  // PDF: "%PDF"
+  if (b0 === 0x25 && b1 === 0x50 && b2 === 0x44 && b3 === 0x46) {
+    return "pdf";
+  }
+
+  // PNG: 0x89 'P' 'N' 'G'
+  if (b0 === 0x89 && b1 === 0x50 && b2 === 0x4e && b3 === 0x47) {
+    return "image";
+  }
+
+  // JPEG: 0xFF 0xD8 0xFF
+  if (b0 === 0xff && b1 === 0xd8 && b2 === 0xff) {
+    return "image";
+  }
+
+  return "other";
 }
 
 // Simple decryption (mirror of encryption in auth-gmail-token)
@@ -88,14 +116,15 @@ serve(async (req) => {
 
     // 2. Fetch email import settings to get access token
     const { data: emailSettings, error: settingsError } = await supabaseClient
-      .from("email_import_settings")
+      .from("email_imports")
       .select("*")
       .eq("user_id", userId)
       .single();
 
     if (settingsError || !emailSettings) {
+      console.error("Email settings fetch error:", settingsError);
       return new Response(
-        JSON.stringify({ error: "Email settings not found. Please connect Gmail." }),
+        JSON.stringify({ error: `Email settings not found. Please connect Gmail. Error: ${settingsError?.message}` }),
         { status: 404, headers: corsHeaders }
       );
     }
@@ -113,8 +142,9 @@ serve(async (req) => {
     }
 
     // 4. Get Google Vision API key
-    const googleVisionApiKey = Deno.env.get("GOOGLE_VISION_API_KEY");
+    const googleVisionApiKey = Deno.env.get("VITE_GOOGLE_VISION_API_KEY");
     if (!googleVisionApiKey) {
+      console.error("Google Vision API key not configured");
       return new Response(
         JSON.stringify({ error: "Google Vision API key not configured" }),
         { status: 500, headers: corsHeaders }
@@ -138,7 +168,7 @@ serve(async (req) => {
     let bytes: Uint8Array | null = null;
 
     if (file_type === "attachment" && file_url.startsWith("gmail://")) {
-      // gmail://messageId/partId
+      // gmail://messageId/attachmentId
       const match = file_url.match(/^gmail:\/\/([^/]+)\/(.+)$/);
       if (!match) {
         return new Response(
@@ -146,41 +176,147 @@ serve(async (req) => {
           { status: 400, headers: corsHeaders }
         );
       }
-      const [, messageId, partId] = match;
+      const [, messageId, initialAttachmentId] = match;
 
-      const attachmentRes = await fetch(
-        `https://www.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${partId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        }
-      );
+      console.log(`Downloading Gmail attachment: messageId=${messageId}, attachmentId=${initialAttachmentId}`);
 
-      if (!attachmentRes.ok) {
-        const body = await attachmentRes.text().catch(() => "");
-        console.error(
-          `Failed to download Gmail attachment - status=${attachmentRes.status}, body=${body}`
+      const downloadAttachment = async (attachmentId: string): Promise<Uint8Array> => {
+        const attachmentRes = await fetch(
+          `https://www.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachmentId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
         );
+
+        if (!attachmentRes.ok) {
+          const bodyText = await attachmentRes.text().catch(() => "");
+          console.error(
+            `Failed to download Gmail attachment - status=${attachmentRes.status}, body=${bodyText}`
+          );
+
+          // If we get an invalid attachment token, try to refetch the message and find a fresh attachmentId
+          let shouldRetryFromMessage = false;
+          try {
+            const parsed = JSON.parse(bodyText);
+            const errMsg: string | undefined = parsed?.error?.message;
+            if (
+              attachmentRes.status === 400 &&
+              errMsg &&
+              errMsg.toLowerCase().includes("invalid attachment token")
+            ) {
+              shouldRetryFromMessage = true;
+            }
+          } catch (_) {
+            // ignore JSON parse errors
+          }
+
+          if (!shouldRetryFromMessage) {
+            throw new Error(
+              `Failed to download Gmail attachment: ${attachmentRes.status}. Please reconnect Gmail.`,
+            );
+          }
+
+          // Retry by fetching the full message and discovering a valid attachmentId
+          console.log(
+            `Attachment token invalid for message ${messageId}, attempting to refetch message and resolve attachmentId`,
+          );
+
+          const messageRes = await fetch(
+            `https://www.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`,
+            {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+              },
+            }
+          );
+
+          if (!messageRes.ok) {
+            const msgBody = await messageRes.text().catch(() => "");
+            console.error(
+              `Failed to refetch Gmail message ${messageId} - status=${messageRes.status}, body=${msgBody}`,
+            );
+            throw new Error(
+              `Failed to download Gmail attachment (message refetch failed): ${messageRes.status}`,
+            );
+          }
+
+          const messageData = await messageRes.json();
+          const parts: any[] = messageData.payload?.parts || [];
+
+          const candidatePart = parts.find((part) =>
+            part?.filename && part?.body?.attachmentId,
+          );
+
+          if (!candidatePart) {
+            throw new Error(
+              "No valid attachment found on Gmail message after retry. Please re-import this bill.",
+            );
+          }
+
+          console.log(
+            `Retrying attachment download with resolved attachmentId=${candidatePart.body.attachmentId} for messageId=${messageId}`,
+          );
+
+          const retryRes = await fetch(
+            `https://www.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${candidatePart.body.attachmentId}`,
+            {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+              },
+            }
+          );
+
+          if (!retryRes.ok) {
+            const retryBody = await retryRes.text().catch(() => "");
+            console.error(
+              `Retry attachment download failed - status=${retryRes.status}, body=${retryBody}`,
+            );
+            throw new Error(
+              `Failed to download Gmail attachment after retry: ${retryRes.status}. Please reconnect Gmail.`,
+            );
+          }
+
+          const retryData = await retryRes.json();
+          const retryBase64Data = (retryData.data as string)
+            .replace(/-/g, "+")
+            .replace(/_/g, "/");
+          const retryBinaryString = atob(retryBase64Data);
+          const retryArr = new Uint8Array(retryBinaryString.length);
+          for (let i = 0; i < retryBinaryString.length; i++) {
+            retryArr[i] = retryBinaryString.charCodeAt(i);
+          }
+          return retryArr;
+        }
+
+        const data = await attachmentRes.json();
+        // Gmail attachment data is base64url encoded
+        const base64Data = (data.data as string)
+          .replace(/-/g, "+")
+          .replace(/_/g, "/");
+        const binaryString = atob(base64Data);
+        const arr = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          arr[i] = binaryString.charCodeAt(i);
+        }
+        return arr;
+      };
+
+      try {
+        bytes = await downloadAttachment(initialAttachmentId);
+      } catch (downloadError) {
+        console.error("Attachment download ultimately failed:", downloadError);
         return new Response(
           JSON.stringify({
-            error: `Failed to download Gmail attachment: ${attachmentRes.status}. Please reconnect Gmail.`,
+            error:
+              downloadError instanceof Error
+                ? downloadError.message
+                : String(downloadError),
           }),
-          { status: 400, headers: corsHeaders }
+          { status: 400, headers: corsHeaders },
         );
       }
-
-      const data = await attachmentRes.json();
-      // Gmail attachment data is base64url encoded
-      const base64Data = (data.data as string)
-        .replace(/-/g, "+")
-        .replace(/_/g, "/");
-      const binaryString = atob(base64Data);
-      const arr = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        arr[i] = binaryString.charCodeAt(i);
-      }
-      bytes = arr;
     } else {
       // Treat as direct link: fetch and read as bytes
       const fileRes = await fetch(file_url);
@@ -206,7 +342,25 @@ serve(async (req) => {
       );
     }
 
-    // 6. Convert to base64 for Vision API
+    // 6. Validate file kind before sending to Vision
+    const fileKind = detectFileKind(bytes);
+    if (fileKind !== "image") {
+      const errorMessage =
+        fileKind === "pdf"
+          ? "PDF documents are not supported by this OCR function yet. Please convert the bill to an image (JPEG/PNG) before processing."
+          : "Unsupported file type for OCR. Only image files (JPEG/PNG) are supported at the moment.";
+
+      console.error(
+        `Unsupported file kind for Vision API (kind=${fileKind}, importedBillId=${importedBillId})`,
+      );
+
+      return new Response(
+        JSON.stringify({ error: errorMessage }),
+        { status: 400, headers: corsHeaders },
+      );
+    }
+
+    // 7. Convert to base64 for Vision API
     const base64Data = bytesToBase64(bytes);
 
     console.log(`Calling Google Vision API for bill ${importedBillId}`);
@@ -257,7 +411,7 @@ serve(async (req) => {
     // 7. Simple date extraction
     const dateRegex = new RegExp(
       "\\d{1,2}[/\\-.\\s]\\d{1,2}[/\\-.\\s]\\d{2,4}|\\d{4}[/\\-.\\s]\\d{1,2}[/\\-.\\s]\\d{1,2}",
-      "g"
+      "g",
     );
     const dates = (extractedText.match(dateRegex) as string[]) || [];
 
@@ -272,21 +426,57 @@ serve(async (req) => {
       "payment",
     ];
     const billTermsFound = billTerms.filter((term) =>
-      extractedText.toLowerCase().includes(term)
+      extractedText.toLowerCase().includes(term),
     );
 
-    const confidence =
-      (billTermsFound.length / billTerms.length) * 100 +
-      (dates.length > 0 ? 20 : 0);
+    // Convert confidence heuristic to 0-1 range (to match dashboard usage)
+    const confidenceScore =
+      Math.min(
+        (billTermsFound.length / billTerms.length) * 100 +
+          (dates.length > 0 ? 20 : 0),
+        100,
+      ) / 100;
 
-    // 8. Store OCR result
+    // 8. Create OCR job so result links into the main OCR dashboard schema
+    const jobStart = Date.now();
+    const { data: ocrJob, error: ocrJobError } = await supabaseClient
+      .from("ocr_jobs")
+      .insert({
+        file_name: subject || file_url,
+        file_type: file_type || "email_import",
+        file_size: bytes.length,
+        status: "completed",
+        completed_at: new Date().toISOString(),
+        processing_time_ms: Date.now() - jobStart,
+        user_id: userId,
+      })
+      .select()
+      .single();
+
+    if (ocrJobError || !ocrJob) {
+      console.error("Failed to create OCR job:", ocrJobError);
+      return new Response(
+        JSON.stringify({ error: "Failed to create OCR job" }),
+        { status: 500, headers: corsHeaders },
+      );
+    }
+
+    // 9. Store OCR result using the shared ocr_results schema
     const { data: ocrResult, error: ocrInsertError } = await supabaseClient
       .from("ocr_results")
       .insert({
-        extracted_text: extractedText,
-        extracted_items: dates.length > 0 ? { dates } : {},
-        bill_probability: Math.min(confidence, 100),
-        created_at: new Date(),
+        job_id: ocrJob.id,
+        document_type: "bill",
+        raw_text: extractedText,
+        confidence: confidenceScore,
+        extracted_data: dates.length > 0 ? { dates } : {},
+        metadata: {
+          source: "email_import",
+          importedBillId,
+          subject,
+          fileUrl: file_url,
+          fileType: file_type,
+        },
       })
       .select()
       .single();
@@ -295,24 +485,37 @@ serve(async (req) => {
       console.error("Failed to store OCR result:", ocrInsertError);
       return new Response(
         JSON.stringify({ error: "Failed to store OCR result" }),
-        { status: 500, headers: corsHeaders }
+        { status: 500, headers: corsHeaders },
       );
     }
 
-    // 9. Update imported bill with OCR result
+    // 10. Update imported bill with OCR result + job id
+    // Be defensive here: some deployments may not yet have ocr_job_id on imported_bills
+    const updatePayload: Record<string, unknown> = {
+      ocr_result_id: ocrResult.id,
+      updated_at: new Date(),
+    };
+
+    try {
+      // Try to also set ocr_job_id if the column exists
+      (updatePayload as any).ocr_job_id = ocrJob.id;
+    } catch (_) {
+      // ignore - best effort
+    }
+
     const { error: updateError } = await supabaseClient
       .from("imported_bills")
-      .update({
-        ocr_result_id: ocrResult.id,
-        ocr_status: "completed",
-        updated_at: new Date(),
-      })
+      .update(updatePayload)
       .eq("id", importedBillId);
 
     if (updateError) {
       console.error("Failed to update imported bill:", updateError);
+
+      // Return full error object as string so it surfaces in client for debugging
       return new Response(
-        JSON.stringify({ error: "Failed to update imported bill" }),
+        JSON.stringify({
+          error: `Failed to update imported bill: ${JSON.stringify(updateError)}`,
+        }),
         { status: 500, headers: corsHeaders }
       );
     }
