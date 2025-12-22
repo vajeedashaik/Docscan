@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Trash2, Star, Calendar, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,8 @@ export const DocumentList: React.FC<DocumentListProps> = ({
   onStar,
   onDelete,
 }) => {
+  const [showAll, setShowAll] = useState(false);
+
   if (isLoading) {
     return (
       <Card className="border-border">
@@ -49,13 +51,15 @@ export const DocumentList: React.FC<DocumentListProps> = ({
     );
   }
 
+  const visibleDocuments = showAll ? documents : documents.slice(0, 5);
+
   return (
     <Card className="border-border">
       <CardHeader>
         <CardTitle className="text-2xl font-bold">Recent Documents ({documents.length})</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        {documents.slice(0, 5).map((doc) => (
+        {visibleDocuments.map((doc) => (
           <div
             key={doc.id}
             className="flex items-start justify-between gap-4 p-4 rounded-lg border border-border hover:shadow-md hover:border-primary/30 transition-smooth group"
@@ -151,6 +155,17 @@ export const DocumentList: React.FC<DocumentListProps> = ({
             </div>
           </div>
         ))}
+
+        {documents.length > 5 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full mt-2"
+            onClick={() => setShowAll((prev) => !prev)}
+          >
+            {showAll ? 'Show less' : `Show all ${documents.length} documents`}
+          </Button>
+        )}
       </CardContent>
     </Card>
   );

@@ -13,6 +13,7 @@ import {
   ArrowRight,
   CheckCircle,
   AlertCircle,
+  Mail,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -34,7 +35,7 @@ const DashboardPage: React.FC = () => {
   const { documents, isLoading: docsLoading, starDocument, deleteDocument } = useDocumentMetadata();
   const { totalDocuments, totalStorageUsedGB, recentScans, successfulScans, failedScans, fetchStats, isLoading } = useOCRStats();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'overview' | 'reminders' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'reminders' | 'importedBills' | 'settings'>('overview');
 
   // Listen for OCR job completion and refresh stats
   useEffect(() => {
@@ -122,7 +123,7 @@ const DashboardPage: React.FC = () => {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
               <Card className="border-border/50 bg-card/50 backdrop-blur">
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
@@ -147,22 +148,6 @@ const DashboardPage: React.FC = () => {
                     <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-accent/30 to-primary/30 flex items-center justify-center">
                       <Bell className="h-5 w-5 text-accent" />
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border-border/50 bg-card/50 backdrop-blur">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Success Rate</p>
-                      <p className="text-2xl font-bold mt-1">
-                        {isLoading ? '-' : totalDocuments > 0 ? `${Math.round((successfulScans / totalDocuments) * 100)}%` : '0%'}
-                      </p>
-                    </div>
-                    <Badge className="bg-primary/20 text-primary border-primary/30">
-                      {isLoading ? 'Loading' : successfulScans > 0 ? 'Active' : 'Pending'}
-                    </Badge>
                   </div>
                 </CardContent>
               </Card>
@@ -193,6 +178,17 @@ const DashboardPage: React.FC = () => {
                 Reminders
               </button>
               <button
+                onClick={() => setActiveTab('importedBills')}
+                className={`px-4 py-3 font-medium text-sm border-b-2 transition-all ${
+                  activeTab === 'importedBills'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Mail className="h-4 w-4 inline mr-2" />
+                Imported Bills
+              </button>
+              <button
                 onClick={() => setActiveTab('settings')}
                 className={`px-4 py-3 font-medium text-sm border-b-2 transition-all ${
                   activeTab === 'settings'
@@ -220,7 +216,7 @@ const DashboardPage: React.FC = () => {
                       />
                     </div>
 
-                    {/* Quick Actions + Imported Bills */}
+                    {/* Quick Actions + Tips */}
                     <div className="space-y-4">
                       <Card className="border-border/50 bg-card/50 backdrop-blur">
                         <CardHeader>
@@ -248,9 +244,6 @@ const DashboardPage: React.FC = () => {
                           </p>
                         </CardContent>
                       </Card>
-
-                      {/* Imported email bills with due dates */}
-                      <ImportedBillsDashboardCard />
                     </div>
                   </div>
                 </>
@@ -266,6 +259,10 @@ const DashboardPage: React.FC = () => {
                     <RemindersList showAll />
                   </CardContent>
                 </Card>
+              )}
+
+              {activeTab === 'importedBills' && (
+                <ImportedBillsDashboardCard />
               )}
 
               {activeTab === 'settings' && (
@@ -324,17 +321,6 @@ const DashboardPage: React.FC = () => {
                           </label>
                         </div>
 
-                        <div className="pb-6 border-b border-border/40">
-                          <h3 className="font-semibold mb-2">Privacy</h3>
-                          <p className="text-sm text-muted-foreground mb-4">
-                            Control your privacy settings
-                          </p>
-                          <label className="flex items-center gap-3 cursor-pointer">
-                            <input type="checkbox" defaultChecked className="w-4 h-4 rounded" />
-                            <span className="text-sm">Make profile public</span>
-                          </label>
-                        </div>
-
                         <div>
                           <h3 className="font-semibold mb-2">Danger Zone</h3>
                           <Button variant="destructive" className="gap-2">
@@ -347,29 +333,6 @@ const DashboardPage: React.FC = () => {
                   </div>
 
                   <div className="space-y-4">
-                    <Card className="border-border/50 bg-card/50 backdrop-blur">
-                      <CardHeader>
-                        <CardTitle className="text-lg">Plan Details</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <div>
-                          <p className="text-xs text-muted-foreground">Current Plan</p>
-                          <p className="font-semibold">Pro ($9.99/month)</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground">Member Since</p>
-                          <p className="font-semibold">{user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground">Status</p>
-                          <Badge className="bg-green-500/20 text-green-700 border-green-500/30">Active</Badge>
-                        </div>
-                        <Button variant="outline" className="w-full">
-                          Manage Subscription
-                        </Button>
-                      </CardContent>
-                    </Card>
-
                     <Card className="border-border/50 bg-card/50 backdrop-blur border-primary/20 bg-primary/5">
                       <CardHeader>
                         <CardTitle className="text-sm text-primary">Usage Stats</CardTitle>

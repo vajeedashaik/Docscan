@@ -74,8 +74,25 @@ export function useOCRStats(): UseOCRStatsReturn {
 
       if (jobsError) throw jobsError;
 
-      // Calculate total documents
-      setTotalDocuments(jobs?.length || 0);
+      // Calculate total documents as unique documents including manual scans and imported email bills
+      const [
+        { count: manualDocsCount, error: manualDocsError },
+        { count: importedBillsCount, error: importedBillsError },
+      ] = await Promise.all([
+        supabase
+          .from('document_metadata')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId),
+        supabase
+          .from('imported_bills')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId),
+      ]);
+
+      if (manualDocsError) throw manualDocsError;
+      if (importedBillsError) throw importedBillsError;
+
+      setTotalDocuments((manualDocsCount || 0) + (importedBillsCount || 0));
 
       // Calculate total storage (sum of file sizes)
       const totalStorage = jobs?.reduce((sum, job) => sum + (job.file_size || 0), 0) || 0;

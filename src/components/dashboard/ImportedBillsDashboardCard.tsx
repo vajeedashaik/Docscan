@@ -2,9 +2,9 @@ import React, { useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Mail, Calendar, AlertTriangle, CheckCircle2, FileText } from 'lucide-react';
+import { Mail, Calendar, FileText } from 'lucide-react';
 import { useEmailImport } from '@/hooks/useEmailImport';
-import { format, isPast, isToday } from 'date-fns';
+import { format } from 'date-fns';
 
 const getDueStatus = (dueDate?: string | null) => {
   if (!dueDate) return null;
@@ -67,9 +67,6 @@ export const ImportedBillsDashboardCard: React.FC = () => {
 
         {visibleBills.map((bill) => {
           const dueStatus = getDueStatus(bill.extracted_due_date);
-          const hasDueDate = !!bill.extracted_due_date;
-          const due = hasDueDate ? new Date(bill.extracted_due_date as string) : null;
-          const expired = due ? isPast(due) && !isToday(due) : false;
 
           return (
             <div
@@ -87,24 +84,6 @@ export const ImportedBillsDashboardCard: React.FC = () => {
                   <Badge variant="outline" className="text-xs">
                     {bill.file_type === 'attachment' ? 'Email attachment' : 'Link'}
                   </Badge>
-                  {hasDueDate && (
-                    <Badge
-                      variant={expired ? 'destructive' : 'outline'}
-                      className="text-xs font-semibold flex items-center gap-1"
-                    >
-                      {expired ? (
-                        <>
-                          <AlertTriangle className="h-3 w-3" />
-                          Expired
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle2 className="h-3 w-3" />
-                          Upcoming
-                        </>
-                      )}
-                    </Badge>
-                  )}
                   {dueStatus && (
                     <Badge
                       variant={dueStatus.variant}
