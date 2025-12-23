@@ -67,6 +67,115 @@ function decryptToken(encrypted: string): string {
   }
 }
 
+// Simple encryption (mirror of encryptToken in auth-gmail-token)
+function encryptToken(token: string, key: string): string {
+  const combined = `${token}|${key}`;
+  return btoa(combined);
+}
+
+// Get a valid Gmail access token, refreshing with the stored refresh token if needed
+async function getValidAccessToken(
+  supabaseClient: ReturnType<typeof createClient>,
+  emailSettings: any,
+  userId: string,
+): Promise<string> {
+  const googleClientId = Deno.env.get("VITE_GOOGLE_CLIENT_ID");
+  const googleClientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+  const encryptionKey = Deno.env.get("TOKEN_ENCRYPTION_KEY") || "default-key";
+
+  if (!googleClientId || !googleClientSecret) {
+    console.error("Google OAuth environment variables are not configured");
+    throw new Error("Google OAuth configuration error");
+  }
+
+  const bufferMs = 5 * 60 * 1000; // 5 minute buffer
+  const now = new Date();
+
+  let expiresAt: Date | null = null;
+  if (emailSettings.token_expires_at) {
+    try {
+      expiresAt = new Date(emailSettings.token_expires_at);
+    } catch (_) {
+      expiresAt = null;
+    }
+  }
+
+  const hasRefreshToken = !!emailSettings.oauth_refresh_token;
+
+  // If we don't have expiry or refresh token, just try the existing token
+  if (!hasRefreshToken || !expiresAt) {
+    return decryptToken(emailSettings.oauth_token);
+  }
+
+  // Refresh if expired or expiring soon
+  if (now.getTime() > expiresAt.getTime() - bufferMs) {
+    console.log(`Access token expired or expiring soon for user ${userId}, refreshing...`);
+
+    const refreshToken = decryptToken(emailSettings.oauth_refresh_token);
+
+    const tokenUrl = "https://oauth2.googleapis.com/token";
+    const tokenParams = new URLSearchParams({
+      client_id: googleClientId,
+      client_secret: googleClientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    });
+
+    const response = await fetch(tokenUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: tokenParams.toString(),
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      console.error(
+        `Failed to refresh Gmail token for user ${userId} - status=${response.status}, body=${body}`,
+      );
+      throw new Error("Failed to refresh Gmail token. Please reconnect Gmail.");
+    }
+
+    const data = await response.json();
+    const newAccessToken: string | undefined = data.access_token;
+    const newExpiresIn: number | undefined = data.expires_in;
+
+    if (!newAccessToken) {
+      throw new Error("Refresh response did not include an access token");
+    }
+
+    const newExpiresAt = newExpiresIn
+      ? new Date(Date.now() + newExpiresIn * 1000).toISOString()
+      : null;
+
+    // Persist the new encrypted access token and expiry so future calls use it
+    const encryptedAccessToken = encryptToken(newAccessToken, encryptionKey);
+
+    const updatePayload: Record<string, unknown> = {
+      oauth_token: encryptedAccessToken,
+      updated_at: new Date(),
+    };
+    if (newExpiresAt) {
+      updatePayload.token_expires_at = newExpiresAt;
+    }
+
+    const { error: updateError } = await supabaseClient
+      .from("email_imports")
+      .update(updatePayload)
+      .eq("user_id", userId);
+
+    if (updateError) {
+      console.error("Failed to update email_imports with new access token:", updateError);
+    }
+
+    return newAccessToken;
+  }
+
+  // Token still valid, just decrypt existing one
+  return decryptToken(emailSettings.oauth_token);
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -129,14 +238,14 @@ serve(async (req) => {
       );
     }
 
-    // 3. Decrypt the access token
+    // 3. Resolve a valid access token (refreshing with the stored refresh token if necessary)
     let accessToken: string;
     try {
-      accessToken = decryptToken(emailSettings.oauth_token);
+      accessToken = await getValidAccessToken(supabaseClient, emailSettings, userId);
     } catch (error) {
-      console.error("Failed to decrypt access token:", error);
+      console.error("Failed to obtain valid Gmail access token:", error);
       return new Response(
-        JSON.stringify({ error: "Failed to decrypt access token. Please reconnect Gmail." }),
+        JSON.stringify({ error: "Failed to obtain Gmail access token. Please reconnect Gmail." }),
         { status: 400, headers: corsHeaders }
       );
     }

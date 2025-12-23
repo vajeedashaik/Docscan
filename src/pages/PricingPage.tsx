@@ -6,6 +6,7 @@ import { Check } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Navbar } from '@/components/layout/Navbar';
+import { Link } from 'react-router-dom';
 
 const PricingPage: React.FC = () => {
   const [theme, setTheme] = React.useState<'light' | 'dark'>('dark');
@@ -115,14 +116,27 @@ const PricingPage: React.FC = () => {
             <div className="relative space-y-6">
               <h2 className="text-3xl font-bold text-foreground">Have Questions?</h2>
               <p className="text-muted-foreground text-base max-w-2xl mx-auto leading-relaxed">
-                Check out our documentation or contact our support team. We're here to help!
+                Browse the documentation to understand how DocScan works end to end.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center pt-2">
-                <Button variant="outline" className="font-semibold transition-smooth hover:border-primary/50 hover:bg-primary/5">View Docs</Button>
-                <Button className="bg-gradient-to-r from-primary to-accent font-semibold transition-smooth hover:shadow-lg hover:shadow-primary/50">Contact Support</Button>
+                <Link to="/docs">
+                  <Button variant="outline" className="font-semibold transition-smooth hover:border-primary/50 hover:bg-primary/5">
+                    View Docs
+                  </Button>
+                </Link>
               </div>
             </div>
           </div>
+
+          {/* Contact support footer */}
+          <footer className="mt-10 border-t border-border/40 bg-background/80">
+            <div className="max-w-7xl mx-auto px-4 py-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-muted-foreground">
+              <span>Need help with billing, subscriptions or technical questions?</span>
+              <a href="mailto:renotify34@gmail.com" className="font-medium text-primary hover:underline">
+                renotify34@gmail.com
+              </a>
+            </div>
+          </footer>
         </div>
       </main>
     </>

@@ -37,7 +37,7 @@ const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'overview' | 'reminders' | 'importedBills' | 'settings'>('overview');
 
-  // Listen for OCR job completion and refresh stats
+  // Listen for OCR job changes and refresh stats in real time
   useEffect(() => {
     if (!userId) return;
 
@@ -48,17 +48,15 @@ const DashboardPage: React.FC = () => {
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: '*',
           schema: 'public',
           table: 'ocr_jobs',
           filter: `user_id=eq.${userId}`,
         },
         (payload) => {
-          console.log('Received OCR job update:', payload);
-          if (payload.new?.status === 'completed' || payload.new?.status === 'failed') {
-            console.log('Job completed/failed, fetching stats...');
-            fetchStats();
-          }
+          console.log('Received OCR job change:', payload);
+          // Any insert/update/delete that affects this user's jobs should refresh stats
+          fetchStats();
         }
       )
       .subscribe((status) => {
@@ -296,16 +294,8 @@ const DashboardPage: React.FC = () => {
                               <p className="text-lg font-bold">{totalDocuments}</p>
                             </div>
                             <div>
-                              <p className="text-xs text-muted-foreground">Success Rate</p>
-                              <p className="text-lg font-bold">{totalDocuments > 0 ? `${Math.round((successfulScans / totalDocuments) * 100)}%` : '0%'}</p>
-                            </div>
-                            <div>
                               <p className="text-xs text-muted-foreground">Storage Used</p>
                               <p className="text-lg font-bold">{totalStorageUsedGB} GB</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-muted-foreground">Failed Scans</p>
-                              <p className="text-lg font-bold text-red-500">{failedScans}</p>
                             </div>
                           </div>
                         </div>
